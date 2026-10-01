@@ -42,6 +42,7 @@ class DocumentResponse(BaseModel):
     conversation_id: Optional[str] = None
     created_at: str = ""
     error: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class DocumentUploadResponse(BaseModel):

@@ -89,7 +89,8 @@ class MultiProviderLLMClient:
             "3. If the context does not contain sufficient information to answer, state clearly:\n"
             "   'I cannot answer this based on the provided document.'\n"
             "4. Do NOT use outside knowledge or make assumptions.\n"
-            "5. Maintain objective rigor."
+            "5. Maintain objective rigor.\n"
+            "6. Use all context given, including the document summary, to reason about the document as a whole rather than only pattern-matching keywords. Infer type/subject from context even if not explicitly labeled. Only say something isn't in the document after genuinely checking the full context provided."
         )
 
         user_content = f"CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
@@ -189,6 +190,53 @@ class MultiProviderLLMClient:
                 supported_claims=["Claims aligned with retrieved context chunks."],
                 unsupported_claims=[]
             )
+
+    def extract_document_metadata(self, full_text: str, provider: Optional[str] = None) -> dict:
+        """
+        Extract generalized document metadata for Phase A ingestion.
+        Returns a dictionary with document_type, primary_subject, summary, and key_entities.
+        """
+        system_prompt = (
+            "You are an expert Document Classification and Extraction Engine.\n"
+            "Analyze the provided document text and extract the following structured metadata.\n\n"
+            "Respond ONLY in valid JSON format with the following keys:\n"
+            "{\n"
+            '  "document_type": "Provide a descriptive string classifying the document type (e.g., resume/CV, contract, invoice, financial statement, report, form, etc.). Do not use a fixed list; decide the best label.",\n'
+            '  "primary_subject": "Answer \'what/whose is this\' for the detected type in one line (e.g., person\'s name for a resume, parties for a contract, entity for financial data).",\n'
+            '  "summary": "Write a 3-5 sentence summary covering overall content and purpose.",\n'
+            '  "key_entities": ["list of names", "organizations", "dates", "amounts", "etc"]\n'
+            "}"
+        )
+
+        user_content = f"DOCUMENT TEXT:\n{full_text}"
+
+        try:
+            client, model, prov_name = self._get_provider_client(provider or self.default_provider)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.0,
+                response_format={"type": "json_object"}
+            )
+            raw_text = response.choices[0].message.content.strip()
+            parsed = json.loads(raw_text)
+            return {
+                "document_type": parsed.get("document_type", "Unknown"),
+                "primary_subject": parsed.get("primary_subject", "Unknown"),
+                "summary": parsed.get("summary", ""),
+                "key_entities": parsed.get("key_entities", [])
+            }
+        except Exception as e:
+            logger.error("metadata_extraction_failed", error=str(e))
+            return {
+                "document_type": "Unknown",
+                "primary_subject": "Unknown",
+                "summary": "Metadata extraction failed.",
+                "key_entities": []
+            }
 
     def _rule_based_fallback_answer(self, query: str, formatted_context: str) -> str:
         passages = formatted_context.split("\n\n")

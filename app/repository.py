@@ -178,6 +178,13 @@ class DatabaseRepository:
                     (status, doc_id)
                 )
 
+    def update_document_metadata(self, doc_id: str, metadata: dict):
+        with self.get_connection() as conn:
+            conn.execute(
+                "UPDATE documents SET metadata = ? WHERE id = ?",
+                (json.dumps(metadata), doc_id)
+            )
+
     def get_all_documents(self, conversation_id: Optional[str] = None) -> List[DocumentStatusResponse]:
         return self.list_documents(conversation_id)
 
@@ -196,7 +203,8 @@ class DatabaseRepository:
                 error=row["error"],
                 created_at=row["created_at"],
                 path=row["path"],
-                conversation_id=row["conversation_id"] if "conversation_id" in row.keys() else None
+                conversation_id=row["conversation_id"] if "conversation_id" in row.keys() else None,
+                metadata=json.loads(row["metadata"]) if row["metadata"] else {}
             )
 
     def list_documents(self, conversation_id: Optional[str] = None) -> List[DocumentStatusResponse]:
@@ -219,7 +227,8 @@ class DatabaseRepository:
                     error=row["error"],
                     created_at=row["created_at"],
                     path=row["path"],
-                    conversation_id=row["conversation_id"] if "conversation_id" in row.keys() else None
+                    conversation_id=row["conversation_id"] if "conversation_id" in row.keys() else None,
+                    metadata=json.loads(row["metadata"]) if row["metadata"] else {}
                 ) for row in rows
             ]
 

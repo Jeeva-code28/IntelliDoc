@@ -159,6 +159,16 @@ class RAGService:
                 self.repo.update_document_status(doc_id, "failed", error="Integrity gate check failed: chunk_count != vector_count.")
                 return False
 
+            # Phase A: LLM Metadata Extraction
+            assembled_parts = []
+            for c in chunks:
+                if c.content_type in ["image", "video", "audio"] and not c.text.strip():
+                    continue
+                assembled_parts.append(c.text.strip())
+            full_text = "\n\n".join(assembled_parts)
+            metadata = self.llm_client.extract_document_metadata(full_text)
+            self.repo.update_document_metadata(doc_id, metadata)
+
             # Update in-memory vector store & BM25 index with conversation partition
             for c in chunks:
                 self.chunks_cache[c.id] = c
@@ -210,14 +220,32 @@ class RAGService:
 
         top_candidates = boosted_results[:settings.FINAL_TOP_K]
 
-        # STAGE 6: Dual Relevance Gate
+        # STAGE 6: Dual Relevance Gate and Phase A Short-Document Bypass
         top_dense_score = dense_results[0][1] if dense_results else 0.0
-        candidate_chunks = [
+        
+        conv_docs = self.repo.get_all_documents(conv_id)
+        retrieved_candidate_chunks = [
             self.chunks_cache[cid] for cid, _ in top_candidates 
             if cid in self.chunks_cache and (
                 getattr(self.chunks_cache[cid], "conversation_id", None) == conv_id
             )
         ]
+
+        candidate_chunk_ids = {c.id for c in retrieved_candidate_chunks}
+        final_candidate_chunks = list(retrieved_candidate_chunks)
+        
+        has_short_document = False
+        for doc in conv_docs:
+            doc_chunks = [c for c in self.chunks_cache.values() if c.document_id == doc.id and getattr(c, "conversation_id", None) == conv_id]
+            total_chars = sum(len(c.text) for c in doc_chunks)
+            if 0 < total_chars <= 3000:
+                has_short_document = True
+                for chunk in doc_chunks:
+                    if chunk.id not in candidate_chunk_ids:
+                        final_candidate_chunks.append(chunk)
+                        candidate_chunk_ids.add(chunk.id)
+
+        candidate_chunks = final_candidate_chunks
 
 
         max_term_coverage = max(
@@ -227,12 +255,15 @@ class RAGService:
         injection_keywords = ["ignore all", "system prompt", "admin mode", "dan prompt", "unrestrained", "bypass network"]
         has_injection = any(kw in req.query.lower() for kw in injection_keywords)
 
-        refusal_triggered = (
-            has_injection or
-            max_term_coverage == 0.0 or
-            (max_term_coverage < settings.RELEVANCE_COVERAGE_THRESHOLD and top_dense_score < 0.68) or
-            top_dense_score < settings.RELEVANCE_DENSE_THRESHOLD
-        )
+        if has_short_document:
+            refusal_triggered = has_injection
+        else:
+            refusal_triggered = (
+                has_injection or
+                max_term_coverage == 0.0 or
+                (max_term_coverage < settings.RELEVANCE_COVERAGE_THRESHOLD and top_dense_score < 0.68) or
+                top_dense_score < settings.RELEVANCE_DENSE_THRESHOLD
+            )
 
         if refusal_triggered or not candidate_chunks:
             refusal_text = "I cannot answer this based on the provided document."
@@ -268,6 +299,19 @@ class RAGService:
 
         # STAGE 7: Grounded LLM Context Construction
         context_parts = []
+        
+        for doc in conv_docs:
+            if doc.metadata and "document_type" in doc.metadata:
+                m = doc.metadata
+                context_parts.append(
+                    f"--- DOCUMENT SUMMARY ({doc.filename}) ---\n"
+                    f"Type: {m.get('document_type', 'Unknown')}\n"
+                    f"Primary Subject: {m.get('primary_subject', 'Unknown')}\n"
+                    f"Summary: {m.get('summary', '')}\n"
+                    f"Key Entities: {', '.join(m.get('key_entities', []))}\n"
+                    f"-------------------------"
+                )
+
         citations: List[CitationSource] = []
         citation_ids = []
 
