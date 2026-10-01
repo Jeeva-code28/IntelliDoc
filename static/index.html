@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project NPN — Multimodal Intelligence & Grounded QA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar: Ingestion & Document Manager -->
+        <aside class="sidebar">
+            <div class="brand-header">
+                <div class="logo-icon">NPN</div>
+                <div class="brand-text">
+                    <h1>Project NPN</h1>
+                    <span class="subtitle">Multimodal Intelligence • Proof • Numbers</span>
+                </div>
+            </div>
+
+            <!-- Upload Area with Multimodal Support -->
+            <div class="upload-section">
+                <div class="drop-zone" id="dropZone">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="drop-text">Drag & Drop Documents or Media</p>
+                    <span class="drop-subtext">PDF, Video (MP4), Audio (MP3), Images, CSV, ZIP</span>
+                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.mp4,.mov,.avi,.mp3,.wav,.csv,.zip" hidden>
+                </div>
+
+                <!-- Active Upload Progress -->
+                <div class="upload-progress-card hidden" id="uploadProgressCard">
+                    <div class="progress-info">
+                        <span class="progress-filename" id="progressFilename">document.pdf</span>
+                        <span class="progress-percent" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progressBarFill"></div>
+                    </div>
+                    <span class="progress-status-text" id="progressStatusText">Ingesting multimodal contents...</span>
+                </div>
+            </div>
+
+            <!-- Ingested Documents List -->
+            <div class="documents-section">
+                <div class="section-title">
+                    <span>Knowledge Base & Attachments</span>
+                    <span class="doc-count-badge" id="docCountBadge">0</span>
+                </div>
+                <div class="documents-list" id="documentsList">
+                    <div class="empty-docs">No documents ingested yet</div>
+                </div>
+            </div>
+
+            <!-- System Specs & Footer -->
+            <div class="sidebar-footer">
+                <div class="spec-pill">
+                    <span class="pulse-dot"></span>
+                    <span>Exact NumPy Vector Search (&lt;35ms)</span>
+                </div>
+                <div class="spec-pill">
+                    <span class="blob-icon">BLOB</span>
+                    <span>SQLite float32 Vectors + BM25</span>
+                </div>
+                <div class="spec-pill">
+                    <span class="pulse-dot active"></span>
+                    <span>Multimodal: PDF • Video • Audio • Images • Tables</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area: Chat Workspace -->
+        <main class="chat-workspace">
+            <!-- Header Bar -->
+            <header class="chat-header">
+                <div class="header-status">
+                    <h2>Multimodal Document Intelligence Workspace</h2>
+                    <p>Grounded Cross-Modal Q&A with Verification Badges & Proof Citations</p>
+                </div>
+                <div class="header-controls">
+                    <select id="llmProviderSelect" class="provider-select">
+                        <option value="gemini">Gemini Flash (Google AI)</option>
+                        <option value="groq">Groq (Llama-3.3 70B)</option>
+                        <option value="ollama" selected>Ollama (Qwen 9B Local)</option>
+                        <option value="openai">OpenAI (GPT-4o-mini)</option>
+                    </select>
+                </div>
+            </header>
+
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer">
+                <!-- Welcome Banner -->
+                <div class="welcome-card">
+                    <div class="welcome-glow"></div>
+                    <div class="welcome-icon">⚡</div>
+                    <h3>Welcome to Project NPN Multimodal</h3>
+                    <p>High-performance local-first RAG engineered for financial reports, tables, figures, embedded attachments, video keyframe timelines, and audio transcripts.</p>
+                    <div class="sample-queries">
+                        <button class="sample-btn" onclick="useSampleQuery('What is the total revenue and profit margin breakdown in the financial tables?')">
+                            📊 Financial Table Analysis
+                        </button>
+                        <button class="sample-btn" onclick="useSampleQuery('What executive guidance and cash remarks were spoken in the audio call?')">
+                            🎙️ Spoken Audio Guidance
+                        </button>
+                        <button class="sample-btn" onclick="useSampleQuery('What scenes and performance metrics are shown in the video presentation?')">
+                            🎬 Video Keyframe Timeline
+                        </button>
+                        <button class="sample-btn" onclick="useSampleQuery('Explain the charts, figures, and visual diagrams extracted from the report.')">
+                            🖼️ Visual Figure & Diagram Audit
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="input-container">
+                <form id="queryForm" class="query-form">
+                    <input 
+                        type="text" 
+                        id="queryInput" 
+                        placeholder="Ask a grounded question across text, tables, figures, video, or audio..." 
+                        autocomplete="off"
+                    >
+                    <button type="submit" id="sendBtn" class="send-btn">
+                        <span>Ask</span>
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Interactive Multimodal Citation Modal Drawer -->
+    <div class="modal-overlay hidden" id="citationModalOverlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <span class="modal-modality-badge" id="modalModalityBadge">[SOURCE]</span>
+                    <h3 id="modalCitationTitle">Citation Proof Detail</h3>
+                </div>
+                <button class="close-modal-btn" onclick="closeCitationModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalCitationBody">
+                <!-- Dynamic Citation Media Content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "ingestion_duration_seconds_94p": 0.72,
+  "retrieval_latency_p99_ms": 19.63,
+  "recall_at_6": 0.7,
+  "refusal_rate": 1.0,
+  "answer_accuracy_f1": 0.7021,
+  "calibrated_thresholds": {
+    "relevance_dense_threshold": 0.15,
+    "relevance_coverage_threshold": 0.4
+  },
+  "total_questions_evaluated": 40
+}

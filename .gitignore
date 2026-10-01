@@ -1,0 +1,78 @@
+# ==============================================================================
+# Project NPN Git Ignore Policy
+# ==============================================================================
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+*.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.cert
+credentials.json
+
+# Python Bytecode & Runtime Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Data, SQLite DBs & Storage
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bin
+
+# Testing, Coverage & Profiling
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Agent Metadata & Logs
+.agents/
+*.log
+logs/
+
+# IDE & Editor Configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build & Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# OS Temporary Files
+*.tmp
+*.bak

@@ -1,0 +1,20 @@
+groups:
+  - name: project_npn_alerts
+    rules:
+      - alert: HighQueryLatency
+        expr: histogram_quantile(0.99, sum(rate(npn_query_latency_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Project NPN P99 Query Latency > 500ms"
+          description: "P99 retrieval and RAG query latency has exceeded 500ms for over 5 minutes."
+
+      - alert: FrequentLLMFallbacks
+        expr: increase(npn_llm_fallback_total[1h]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High LLM Provider Fallback Rate Detected"
+          description: "Over 10 LLM provider fallback events occurred in the past hour. Primary provider may be unstable."
