@@ -1,0 +1,1 @@
+Project Beta Datacenter: Cluster runs 64 H100 GPU nodes with 3.2 Tbps InfiniBand interconnect.

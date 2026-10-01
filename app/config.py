@@ -74,7 +74,7 @@ class Settings:
     RELEVANCE_COVERAGE_THRESHOLD: float = 0.60
 
     # LLM Settings
-    DEFAULT_LLM_PROVIDER: str = os.getenv("DEFAULT_LLM_PROVIDER", "gemini")
+    DEFAULT_LLM_PROVIDER: str = os.getenv("DEFAULT_LLM_PROVIDER", "ollama")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
@@ -82,8 +82,8 @@ class Settings:
     OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     # Configurable Model Settings
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "hf.co/armand0e/Qwen3.5-9B-Opus-Agent-GGUF:Q5_K_M")
-    OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "hf.co/helloollel/Llama-3.1-8B-instruct-bilibili-gguf:Q4_K_M")
+    OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "120.0"))
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

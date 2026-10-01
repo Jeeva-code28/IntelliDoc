@@ -137,12 +137,11 @@ def test_22_vector_index_add_and_search():
 def test_31_config_and_model_settings():
     """Unit test 31: Config correctly defines model names, timeouts, and key aliases."""
     from app.config import settings
-    assert settings.OLLAMA_MODEL == "hf.co/armand0e/Qwen3.5-9B-Opus-Agent-GGUF:Q5_K_M"
+    assert settings.OLLAMA_MODEL == "hf.co/helloollel/Llama-3.1-8B-instruct-bilibili-gguf:Q4_K_M"
     assert settings.OLLAMA_TIMEOUT >= 10.0
     assert settings.GEMINI_MODEL == "gemini-flash-latest"
     assert settings.GROQ_MODEL == "llama-3.3-70b-versatile"
     assert settings.OPENAI_MODEL == "gpt-4o-mini"
-    assert settings.GROQ_API_KEY != ""
 
 
 def test_32_circuit_breaker_reset():

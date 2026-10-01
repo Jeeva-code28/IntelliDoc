@@ -82,14 +82,14 @@ class MultiProviderLLMClient:
         """
         system_prompt = (
             "You are Project NPN's Lead Financial and Technical Document Analyst.\n"
-            "Your task is to answer the user's question accurately, concisely, and STRICTLY based on the provided context.\n\n"
+            "Your task is to answer the user's question in English accurately, concisely, and STRICTLY based on the provided context.\n\n"
             "RULES:\n"
-            "1. Answer ONLY using facts directly stated in the context.\n"
+            "1. Answer in English ONLY using facts directly stated in the context.\n"
             "2. For every claim, cite the source passage ID in brackets, e.g. [S1], [S2].\n"
             "3. If the context does not contain sufficient information to answer, state clearly:\n"
             "   'I cannot answer this based on the provided document.'\n"
             "4. Do NOT use outside knowledge or make assumptions.\n"
-            "5. Temperature is set to 0. Maintain objective rigor."
+            "5. Maintain objective rigor."
         )
 
         user_content = f"CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
@@ -150,10 +150,10 @@ class MultiProviderLLMClient:
             "You are a Fact-Checking Verification Auditor.\n"
             "Compare the generated ANSWER against the CONTEXT PASSAGES for the given QUESTION.\n"
             "Check if every single claim in the ANSWER is directly supported by the CONTEXT.\n\n"
-            "Respond in JSON format with keys:\n"
+            "Respond in English in JSON format with keys:\n"
             "{\n"
             '  "status": "supported" | "partial" | "unsupported",\n'
-            '  "reasoning": "brief explanation",\n'
+            '  "reasoning": "brief explanation in English",\n'
             '  "supported_claims": ["claim 1", ...],\n'
             '  "unsupported_claims": ["claim X", ...]\n'
             "}"

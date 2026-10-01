@@ -7,9 +7,10 @@ import urllib.error
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-SCREENSHOT_DIR = Path(r"d:/QA/.agents/conversation_tests/screenshots")
+BASE_DIR = Path(__file__).resolve().parent.parent
+SCREENSHOT_DIR = BASE_DIR / "tests" / "screenshots_conversation_flow"
 SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-FIXTURE_DIR = Path(r"d:/QA/.agents/conversation_tests/fixtures")
+FIXTURE_DIR = BASE_DIR / "tests" / "fixtures"
 FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -37,7 +38,7 @@ def ensure_server_running():
     log("Starting FastAPI server on http://127.0.0.1:8000...")
     server_proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-        cwd=r"d:\QA\QA",
+        cwd=str(BASE_DIR),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
@@ -217,7 +218,7 @@ def run_browser_conversation_tests():
             server_proc.terminate()
 
     # Write report log
-    report_file = Path(r"d:/QA/.agents/conversation_tests/browser_test_summary.log")
+    report_file = BASE_DIR / "tests" / "browser_test_summary.log"
     report_file.write_text("\n".join(REPORT), encoding="utf-8")
     return True
 

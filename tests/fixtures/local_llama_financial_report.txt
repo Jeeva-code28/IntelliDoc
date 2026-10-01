@@ -1,0 +1,11 @@
+Project NPN Financial and Technical Executive Summary (FY2025)
+
+Section 1: Financial Performance
+In Q4 FY2025, total revenue was $148.5 million, representing a 22.4% year-over-year increase.
+Net profit reached $34.2 million with an operating margin of 23.0%.
+Gross margin remained strong at 68.5%, driven by cloud software subscriptions.
+
+Section 2: AI Infrastructure and Technology
+The AI infrastructure cluster operates 128 NVIDIA H100 GPU nodes interconnected via 3.2 Tbps Quantum-2 InfiniBand.
+The primary local inference engine is running Llama-3.1-8B-Instruct GGUF quantization Q4_K_M.
+Vector search achieves sub-10ms exact cosine retrieval over SQLite BLOB storage.
