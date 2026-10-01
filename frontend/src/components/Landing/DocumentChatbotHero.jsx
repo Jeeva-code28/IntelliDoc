@@ -97,20 +97,6 @@ export default function DocumentChatbotHero() {
         <div className="relative mx-auto grid min-h-[calc(100vh-81px)] max-w-7xl items-center gap-10 px-6 py-14 lg:grid-cols-[0.9fr_1.1fr] lg:px-10 lg:py-16">
           {/* Left content */}
           <div className="max-w-2xl">
-            <div
-              className="mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em]"
-              style={{
-                borderColor: `${palette.blueBright}80`,
-                backgroundColor: `${palette.blueDark}80`,
-                color: palette.blueBright,
-              }}
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: palette.orange }}
-              />
-              AI-Powered Document Assistant
-            </div>
 
             <h1 className="text-5xl font-black leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
               Talk to your

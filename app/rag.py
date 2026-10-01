@@ -16,6 +16,7 @@ from app.vector_store import VectorStore, NumpyVectorStore
 from app.retrieval import (
     BM25Index, calculate_term_coverage, rrf_fusion, apply_intent_boost
 )
+from app.reranker import rerank
 from app.llm import get_llm_client, MultiProviderLLMClient
 from app.observability.logging import log_ingestion_complete, log_query_served, logger
 
@@ -86,12 +87,6 @@ class RAGService:
             # Multimodal parsing router
             if ext == ".pdf":
                 raw_chunks = parse_pdf_document(file_path, doc_id)
-            elif ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
-                raw_chunks = multimedia.process_video_file(file_path, doc_id, original_filename)
-            elif ext in [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac"]:
-                raw_chunks = multimedia.process_audio_file(file_path, doc_id, original_filename)
-            elif ext in [".png", ".jpg", ".jpeg", ".webp", ".svg", ".bmp", ".tiff"]:
-                raw_chunks = multimedia.process_image_attachment(file_path, doc_id, original_filename)
             elif ext in [".csv", ".tsv"]:
                 raw_chunks = multimedia.process_tabular_attachment(file_path, doc_id, original_filename)
             elif ext == ".zip":
@@ -159,16 +154,6 @@ class RAGService:
                 self.repo.update_document_status(doc_id, "failed", error="Integrity gate check failed: chunk_count != vector_count.")
                 return False
 
-            # Phase A: LLM Metadata Extraction
-            assembled_parts = []
-            for c in chunks:
-                if c.content_type in ["image", "video", "audio"] and not c.text.strip():
-                    continue
-                assembled_parts.append(c.text.strip())
-            full_text = "\n\n".join(assembled_parts)
-            metadata = self.llm_client.extract_document_metadata(full_text)
-            self.repo.update_document_metadata(doc_id, metadata)
-
             # Update in-memory vector store & BM25 index with conversation partition
             for c in chunks:
                 self.chunks_cache[c.id] = c
@@ -185,6 +170,19 @@ class RAGService:
                 table_count=sum(1 for c in chunks if c.content_type == "table"),
                 chunk_count=len(chunks)
             )
+
+            # Phase A: LLM Metadata Extraction (Non-blocking conceptually: done AFTER ready status)
+            try:
+                assembled_parts = []
+                for c in chunks:
+                    if c.content_type in ["image", "video", "audio"] and not c.text.strip():
+                        continue
+                    assembled_parts.append(c.text.strip())
+                full_text = "\n\n".join(assembled_parts)
+                metadata = self.llm_client.extract_document_metadata(full_text[:10000])
+                self.repo.update_document_metadata(doc_id, metadata)
+            except Exception as e:
+                logger.warning("metadata_extraction_failed", doc_id=doc_id, error=str(e))
             return True
 
         except Exception as e:
@@ -201,76 +199,113 @@ class RAGService:
         conv_id = req.conversation_id or str(uuid.uuid4())
         self.repo.ensure_conversation(conv_id)
 
+        # Load recent messages
+        recent_msgs = []
+        conv = self.repo.get_conversation(conv_id)
+        if conv and conv.messages:
+            recent_msgs = conv.messages
+
+        # Rewrite query
+        rewritten_query = self.llm_client.rewrite_query(req.query, recent_msgs, req.llm_provider)
+
+        conv_docs = self.repo.get_all_documents(conv_id)
+        has_docs = len(conv_docs) > 0
+
+        # STAGE 0: Intent Routing
+        from app.intent import route, Intent
+        intent, conf, reason = route(req.query, llm_client=self.llm_client, has_documents=has_docs)
+
+        start_total = time.perf_counter()
+
+        if intent in (Intent.GREETING, Intent.SMALLTALK, Intent.META):
+            answer, _ = self.llm_client.generate_grounded_answer(
+                query=req.query,
+                formatted_context="[NO DOCUMENTS NEEDED - CONVERSATIONAL/META QUERY]",
+                recent_messages=recent_msgs,
+                provider=req.llm_provider
+            )
+            total_latency_ms = (time.perf_counter() - start_total) * 1000.0
+            
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "user", req.query, [])
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "assistant", answer, [])
+            
+            return QueryResponse(
+                answer=answer, citations=[], verification=None,
+                latency_ms=total_latency_ms, retrieval_latency_ms=0.0,
+                conversation_id=conv_id, intent=intent.value
+            )
+
+        if intent == Intent.INJECTION:
+            refusal_text = "I cannot fulfill this request."
+            total_latency_ms = (time.perf_counter() - start_total) * 1000.0
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "user", req.query, [])
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "assistant", refusal_text, [])
+            return QueryResponse(
+                answer=refusal_text, citations=[], verification=None,
+                latency_ms=total_latency_ms, retrieval_latency_ms=0.0,
+                conversation_id=conv_id, intent=intent.value
+            )
+
+        if intent == Intent.GENERAL_KNOWLEDGE:
+            answer, _ = self.llm_client.generate_grounded_answer(
+                query=req.query,
+                formatted_context="[NO DOCUMENTS - ANSWER FROM GENERAL KNOWLEDGE. START RESPONSE BY NOTING THAT IT IS NOT FROM THE DOCUMENTS.]",
+                recent_messages=recent_msgs,
+                provider=req.llm_provider
+            )
+            total_latency_ms = (time.perf_counter() - start_total) * 1000.0
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "user", req.query, [])
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "assistant", answer, [])
+            return QueryResponse(
+                answer=answer, citations=[], verification=None,
+                latency_ms=total_latency_ms, retrieval_latency_ms=0.0,
+                conversation_id=conv_id, intent=intent.value
+            )
+
         # STAGE 1: Fast Asymmetric Embed Query (<15ms)
         start_retrieval = time.perf_counter()
-        query_vec = self.embedding_engine.embed_query(req.query)
+        query_vec = self.embedding_engine.embed_query(rewritten_query)
 
         # STAGE 2: Exact NumPy Vector Search scoped to conversation (<25ms P99)
         dense_results = self.vector_store.search(query_vec, k=settings.TOP_K_DENSE, conversation_id=conv_id)
 
         # STAGE 3: Custom BM25 Sparse Search scoped to conversation (<5ms)
-        sparse_results = self.bm25_index.search(req.query, top_k=settings.TOP_K_SPARSE, conversation_id=conv_id)
+        sparse_results = self.bm25_index.search(rewritten_query, top_k=settings.TOP_K_SPARSE, conversation_id=conv_id)
 
         # STAGE 4: RRF Fusion (k=60)
         fusion_results = rrf_fusion(dense_results, sparse_results, k=settings.RRF_K)
 
         # STAGE 5: Intent Boost (numeric/table, video, audio, image boost)
-        boosted_results = apply_intent_boost(req.query, fusion_results, self.chunks_cache)
+        boosted_results = apply_intent_boost(rewritten_query, fusion_results, self.chunks_cache)
+        
+        # STAGE 5B: Rerank
+        # Map boosted IDs back to Chunk objects for the cross-encoder
+        candidate_chunks_to_rerank = [
+            self.chunks_cache[cid] for cid, _ in boosted_results[:settings.FINAL_TOP_K * 2]
+            if cid in self.chunks_cache
+        ]
+        
+        reranked_results = rerank(rewritten_query, candidate_chunks_to_rerank, top_k=settings.FINAL_TOP_K)
+        
         retrieval_latency_ms = (time.perf_counter() - start_retrieval) * 1000.0
 
-        top_candidates = boosted_results[:settings.FINAL_TOP_K]
+        top_candidates = reranked_results
 
-        # STAGE 6: Dual Relevance Gate and Phase A Short-Document Bypass
-        top_dense_score = dense_results[0][1] if dense_results else 0.0
+        # STAGE 6: Relevance Gate
+        top_rerank_score = reranked_results[0][1] if reranked_results else 0.0
         
         conv_docs = self.repo.get_all_documents(conv_id)
         retrieved_candidate_chunks = [
-            self.chunks_cache[cid] for cid, _ in top_candidates 
-            if cid in self.chunks_cache and (
-                getattr(self.chunks_cache[cid], "conversation_id", None) == conv_id
-            )
+            chunk for chunk, _ in top_candidates 
+            if getattr(chunk, "conversation_id", None) == conv_id
         ]
 
-        candidate_chunk_ids = {c.id for c in retrieved_candidate_chunks}
-        final_candidate_chunks = list(retrieved_candidate_chunks)
-        
-        has_short_document = False
-        for doc in conv_docs:
-            doc_chunks = [c for c in self.chunks_cache.values() if c.document_id == doc.id and getattr(c, "conversation_id", None) == conv_id]
-            total_chars = sum(len(c.text) for c in doc_chunks)
-            if 0 < total_chars <= 3000:
-                has_short_document = True
-                for chunk in doc_chunks:
-                    if chunk.id not in candidate_chunk_ids:
-                        final_candidate_chunks.append(chunk)
-                        candidate_chunk_ids.add(chunk.id)
+        candidate_chunks = retrieved_candidate_chunks
 
-        candidate_chunks = final_candidate_chunks
+        CONFIDENCE_FLOOR = 0.35
+        refusal_triggered = top_rerank_score < CONFIDENCE_FLOOR
 
-
-        max_term_coverage = max(
-            [calculate_term_coverage(req.query, c.text) for c in candidate_chunks]
-        ) if candidate_chunks else 0.0
-
-        injection_keywords = ["ignore all", "system prompt", "admin mode", "dan prompt", "unrestrained", "bypass network"]
-        has_injection = any(kw in req.query.lower() for kw in injection_keywords)
-
-        conversational_keywords = ["hi", "hello", "hey", "how are you", "what's up", "good morning", "good evening", "good afternoon"]
-        is_conversational = req.query.strip().lower() in conversational_keywords
-
-        if has_short_document:
-            refusal_triggered = has_injection
-        else:
-            refusal_triggered = (
-                has_injection or
-                (not is_conversational and (
-                    max_term_coverage == 0.0 or
-                    (max_term_coverage < settings.RELEVANCE_COVERAGE_THRESHOLD and top_dense_score < 0.68) or
-                    top_dense_score < settings.RELEVANCE_DENSE_THRESHOLD
-                ))
-            )
-
-        if refusal_triggered or (not candidate_chunks and not is_conversational):
+        if refusal_triggered or not candidate_chunks:
             refusal_text = "I cannot answer this based on the provided document."
             total_latency_ms = (time.perf_counter() - start_total) * 1000.0
 
@@ -299,7 +334,8 @@ class RAGService:
                 verification=v_badge,
                 latency_ms=total_latency_ms,
                 retrieval_latency_ms=retrieval_latency_ms,
-                conversation_id=conv_id
+                conversation_id=conv_id,
+                intent=intent.value
             )
 
         # STAGE 7: Grounded LLM Context Construction
@@ -325,8 +361,8 @@ class RAGService:
             context_parts.append(f"SOURCE {source_tag} ({chunk.filename}, type: {chunk.content_type}, p.{chunk.page_number}, {chunk.section}):\n{chunk.context_text}")
             citation_ids.append(chunk.id)
 
-            # Cosine score lookup
-            score = next((sc for cid, sc in dense_results if cid == chunk.id), 0.0)
+            # Rerank score lookup
+            score = next((sc for cid, sc in reranked_results if cid == chunk.id), 0.0)
             citations.append(CitationSource(
                 chunk_id=chunk.id,
                 filename=chunk.filename,
@@ -347,15 +383,19 @@ class RAGService:
         answer, provider_used = self.llm_client.generate_grounded_answer(
             query=req.query,
             formatted_context=formatted_context,
+            recent_messages=recent_msgs,
             provider=req.llm_provider
         )
 
-        verification_badge = self.llm_client.verify_answer(
-            query=req.query,
-            answer=answer,
-            formatted_context=formatted_context,
-            provider=req.llm_provider
-        )
+        if getattr(req, "skip_verification", False):
+            verification_badge = None
+        else:
+            verification_badge = self.llm_client.verify_answer(
+                query=req.query,
+                answer=answer,
+                formatted_context=formatted_context,
+                provider=req.llm_provider
+            )
 
         total_latency_ms = (time.perf_counter() - start_total) * 1000.0
 
@@ -377,7 +417,8 @@ class RAGService:
             verification=verification_badge,
             latency_ms=total_latency_ms,
             retrieval_latency_ms=retrieval_latency_ms,
-            conversation_id=conv_id
+            conversation_id=conv_id,
+            intent=intent.value
         )
 
     def delete_conversation(self, conv_id: str) -> Optional[Dict[str, Any]]:

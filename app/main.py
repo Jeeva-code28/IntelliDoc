@@ -40,7 +40,7 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -124,7 +124,7 @@ async def upload_document(
     file: UploadFile = File(...),
     conversation_id: Optional[str] = Form(None)
 ):
-    allowed_exts = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".avi", ".mp3", ".wav", ".csv", ".tsv", ".zip", ".txt", ".md", ".markdown", ".log", ".json"}
+    allowed_exts = {".pdf", ".csv", ".tsv", ".txt", ".md", ".markdown", ".log", ".json"}
     ext = Path(file.filename).suffix.lower()
     if ext not in allowed_exts:
         raise HTTPException(status_code=400, detail=f"Unsupported file format '{ext}'. Allowed: {', '.join(sorted(allowed_exts))}")

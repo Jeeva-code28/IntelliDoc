@@ -57,6 +57,7 @@ class QueryRequest(BaseModel):
     query: str
     conversation_id: Optional[str] = None
     llm_provider: Optional[str] = None
+    skip_verification: bool = True
 
 
 class CitationSource(BaseModel):
@@ -87,6 +88,7 @@ class QueryResponse(BaseModel):
     latency_ms: float
     retrieval_latency_ms: float
     conversation_id: str
+    intent: Optional[str] = None
 
 
 class MessageResponse(BaseModel):

@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
 
 from app.config import settings
-from app.schemas import VerificationBadge, Chunk
+from app.schemas import VerificationBadge, Chunk, MessageSchema
 from app.resilience.circuit_breaker import get_circuit_breaker
 from app.observability.logging import LLM_FALLBACK_COUNT, logger
 
@@ -74,10 +74,47 @@ class MultiProviderLLMClient:
         else:
             raise ValueError(f"Unsupported LLM provider: {prov}")
 
+    def rewrite_query(
+        self,
+        query: str,
+        recent_messages: List[MessageSchema],
+        provider: Optional[str] = None
+    ) -> str:
+        """
+        Rewrites the query to be standalone based on the recent conversation turns.
+        """
+        if not recent_messages:
+            return query
+            
+        history_text = "\n".join([f"{msg.role.capitalize()}: {msg.content}" for msg in recent_messages[-3:]])
+        system_prompt = (
+            "You are a helpful assistant. Given the following conversation history and a new user query, "
+            "rewrite the user query to be a standalone question that can be understood without the history. "
+            "Do not answer the question, just rewrite it."
+        )
+        user_content = f"HISTORY:\n{history_text}\n\nNEW QUERY: {query}"
+        
+        try:
+            client, model, prov_name = self._get_provider_client(provider or self.default_provider)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.0
+            )
+            if response.choices and response.choices[0].message.content:
+                return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error("rewrite_query_failed", error=str(e))
+        return query
+
     def generate_grounded_answer(
         self,
         query: str,
         formatted_context: str,
+        recent_messages: Optional[List[MessageSchema]] = None,
         provider: Optional[str] = None
     ) -> Tuple[str, str]:
         """
@@ -98,7 +135,11 @@ class MultiProviderLLMClient:
             "7. If the user query is a greeting or general conversational phrase (e.g., 'hi', 'hello', 'how are you'), you may respond warmly and conversationally without citing context."
         )
 
-        user_content = f"CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
+        history_context = ""
+        if recent_messages:
+            history_context = "RECENT CONVERSATION HISTORY:\n" + "\n".join([f"{msg.role.capitalize()}: {msg.content}" for msg in recent_messages[-3:]]) + "\n\n"
+
+        user_content = f"{history_context}CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
 
         preferred = provider or self.default_provider
         providers_to_try = [preferred, "gemini", "groq", "openai", "ollama"]
