@@ -1,11 +1,27 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChat } from '../../context/ChatContext';
-import { MessageSquare, X, Paperclip, Send, Plus, Trash2, ChevronDown, File } from 'lucide-react';
+import { MessageSquare, X, Paperclip, Send, Plus, Trash2, ChevronDown, File, Volume2, Square, Mic, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import DOMPurify from 'dompurify';
 import Tilt from 'react-parallax-tilt';
 import TypingIndicator from './TypingIndicator';
+
+const stripMarkdown = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
+    .replace(/`{3}[\s\S]*?`{3}/g, ' code block ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#+\s+/gm, '')
+    .replace(/>\s+/g, '')
+    .replace(/[-*+]\s+/g, '')
+    .replace(/\n+/g, ' ')
+    .trim();
+};
 
 export default function ChatWindow() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,6 +30,13 @@ export default function ChatWindow() {
   const [showHistory, setShowHistory] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   
+  // Voice state
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState(null);
+  const [isListening, setIsListening] = useState(false);
+  const [sttError, setSttError] = useState(null);
+  const recognitionRef = useRef(null);
+  const baseInputTextRef = useRef('');
+
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const historyDropdownRef = useRef(null);
@@ -32,6 +55,59 @@ export default function ChatWindow() {
   const messages = activeConversation?.messages || [];
   const docs = activeConversation?.documents || [];
 
+  // STT Initialization
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setSttError(null);
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        setInputValue(baseInputTextRef.current + transcript);
+      };
+
+      recognition.onerror = (event) => {
+        console.error("STT Error:", event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setSttError('not-allowed');
+        }
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  // Cleanup TTS/STT on unmount or conversation change
+  useEffect(() => {
+    window.speechSynthesis?.cancel();
+    setSpeakingMessageIndex(null);
+    if (recognitionRef.current) {
+      recognitionRef.current.abort();
+      setIsListening(false);
+    }
+    
+    return () => {
+      window.speechSynthesis?.cancel();
+      if (recognitionRef.current) recognitionRef.current.abort();
+    };
+  }, [currentConversationId]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,6 +123,40 @@ export default function ChatWindow() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleTTS = (text, index) => {
+    window.speechSynthesis.cancel();
+    if (speakingMessageIndex === index) {
+      setSpeakingMessageIndex(null);
+      return;
+    }
+    
+    const cleanText = stripMarkdown(text);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    utterance.onstart = () => setSpeakingMessageIndex(index);
+    utterance.onend = () => setSpeakingMessageIndex(null);
+    utterance.onerror = (e) => {
+      console.error("TTS Error:", e);
+      setSpeakingMessageIndex(null);
+    };
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleListen = () => {
+    if (!recognitionRef.current) {
+      alert("Voice input is not supported in this browser.");
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      setSttError(null);
+      baseInputTextRef.current = inputValue + (inputValue.trim() ? ' ' : '');
+      recognitionRef.current.start();
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,7 +203,6 @@ export default function ChatWindow() {
 
   return (
     <>
-      {/* Floating Action Button */}
       <AnimatePresence>
         {!isOpen && (
           <motion.button 
@@ -110,11 +219,9 @@ export default function ChatWindow() {
         )}
       </AnimatePresence>
 
-      {/* Chat Window Panel */}
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* Blurred Background Overlay */}
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -144,9 +251,7 @@ export default function ChatWindow() {
                   </button>
                 </div>
                 
-                {/* Top Navigation Controls */}
                 <div className="flex items-center gap-2">
-                  {/* History Dropdown */}
                   <div className="relative" ref={historyDropdownRef}>
                     <button 
                       onClick={() => setShowHistory(!showHistory)}
@@ -184,7 +289,6 @@ export default function ChatWindow() {
                     </AnimatePresence>
                   </div>
 
-                  {/* New Chat Button */}
                   <button 
                     onClick={createNewChat}
                     title="New Conversation"
@@ -194,7 +298,6 @@ export default function ChatWindow() {
                     <span>New Conversation</span>
                   </button>
 
-                  {/* Delete Button */}
                   <button 
                     onClick={handleDelete}
                     title="Delete Chat"
@@ -204,7 +307,6 @@ export default function ChatWindow() {
                     <span>Delete Conversation</span>
                   </button>
 
-                  {/* Model Switcher */}
                   <select 
                     value={provider} 
                     onChange={(e) => setProvider(e.target.value)}
@@ -233,17 +335,33 @@ export default function ChatWindow() {
                 ) : (
                   messages.map((m, idx) => (
                     <div key={idx} className={`flex flex-col max-w-[85%] ${m.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
-                      <div className="text-[10px] text-[var(--color-text-muted)] mb-1.5 font-medium uppercase tracking-wider px-1">
-                        {m.role === 'user' ? 'You' : 'Project NPN'}
-                      </div>
-                      <div className={`p-4 text-[14px] leading-relaxed ${m.role === 'user' ? 'bg-[var(--color-bg-surface)] border border-[var(--color-border)] rounded-2xl rounded-tr-sm text-[var(--color-text-primary)]' : 'bg-transparent text-[var(--color-text-primary)]'}`}>
+                      {m.role === 'user' ? (
+                        <div className="text-[10px] text-[var(--color-text-muted)] mb-1.5 font-medium uppercase tracking-wider px-1">
+                          You
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between w-full mb-1.5 px-1">
+                          <div className="text-[10px] text-[var(--color-text-muted)] font-medium uppercase tracking-wider">
+                            Project NPN
+                          </div>
+                          {window.speechSynthesis && (
+                            <button 
+                              onClick={() => handleTTS(m.content, idx)}
+                              className="text-[var(--color-text-muted)] hover:text-[var(--color-accent-indigo)] transition-colors cursor-pointer flex items-center justify-center w-5 h-5 rounded hover:bg-[var(--color-bg-elevated)]"
+                              title={speakingMessageIndex === idx ? "Stop speaking" : "Read aloud"}
+                            >
+                              {speakingMessageIndex === idx ? <Square size={10} className="fill-current" /> : <Volume2 size={12} />}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className={`p-4 text-[14px] leading-relaxed ${m.role === 'user' ? 'bg-[var(--color-bg-surface)] border border-[var(--color-border)] rounded-2xl rounded-tr-sm text-[var(--color-text-primary)]' : 'bg-transparent text-[var(--color-text-primary)] w-full'}`}>
                         {m.role === 'user' ? (
                           m.content
                         ) : (
                           <div className="markdown-body text-[14px]">
-                            <ReactMarkdown 
-                              components={MarkdownComponents}
-                            >
+                            <ReactMarkdown components={MarkdownComponents}>
                               {DOMPurify.sanitize(m.content)}
                             </ReactMarkdown>
                           </div>
@@ -268,8 +386,6 @@ export default function ChatWindow() {
               <div className="p-4 bg-[var(--color-bg-main)] border-t border-[var(--color-border)]">
                 <form onSubmit={handleSubmit} className="flex flex-col gap-2 bg-[var(--color-bg-surface)] border border-[var(--color-border)] rounded-2xl focus-within:border-[var(--color-border-highlight)] transition-colors p-2 shadow-sm">
                   
-
-                  {/* Document Indicator Badges */}
                   {docs.length > 0 && (
                     <div className="flex flex-wrap gap-2 px-3 pt-2">
                       {docs.map((d, i) => (
@@ -283,9 +399,7 @@ export default function ChatWindow() {
                     </div>
                   )}
 
-                  {/* Main Input Row */}
-                  <div className="flex items-end gap-3 px-1 pb-1">
-                    {/* Upload Button */}
+                  <div className="flex items-end gap-2 px-1 pb-1">
                     <button 
                       type="button" 
                       onClick={() => fileInputRef.current?.click()}
@@ -303,7 +417,29 @@ export default function ChatWindow() {
                       className="hidden" 
                     />
 
-                    {/* Text Input */}
+                    {/* STT Button */}
+                    <div className="relative flex items-center">
+                      <button 
+                        type="button"
+                        onClick={toggleListen}
+                        className={`p-2 rounded-xl transition-colors cursor-pointer mb-0.5 flex-shrink-0 ${
+                          isListening 
+                            ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' 
+                            : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-elevated)]'
+                        }`}
+                        title={isListening ? "Stop listening" : "Voice input"}
+                      >
+                        {isListening ? <Square size={16} className="fill-current" /> : <Mic size={18} />}
+                      </button>
+                      
+                      {sttError === 'not-allowed' && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-red-500 text-white text-[10px] py-1 px-2 rounded flex items-center gap-1 shadow-lg z-50">
+                          <AlertCircle size={10} />
+                          Microphone access denied
+                        </div>
+                      )}
+                    </div>
+
                     <textarea 
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
@@ -313,12 +449,11 @@ export default function ChatWindow() {
                           handleSubmit(e);
                         }
                       }}
-                      placeholder="Ask a question..." 
-                      className="flex-1 bg-transparent border-none text-[14px] text-[var(--color-text-primary)] py-2.5 outline-none placeholder-[var(--color-text-muted)] resize-none min-h-[44px] max-h-[150px] scrollbar-thin scrollbar-thumb-[var(--color-border-highlight)]"
+                      placeholder={isListening ? "Listening..." : "Ask a question..."}
+                      className="flex-1 bg-transparent border-none text-[14px] text-[var(--color-text-primary)] py-2.5 px-1 outline-none placeholder-[var(--color-text-muted)] resize-none min-h-[44px] max-h-[150px] scrollbar-thin scrollbar-thumb-[var(--color-border-highlight)]"
                       rows={1}
                     />
 
-                    {/* Send Button */}
                     <button 
                       type="submit" 
                       disabled={!inputValue.trim()} 
