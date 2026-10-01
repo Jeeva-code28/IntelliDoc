@@ -92,6 +92,32 @@ def prometheus_metrics():
     return Response(content=data, media_type=content_type)
 
 
+async def _save_uploaded_file(file: UploadFile, target_path: Path, max_bytes: int) -> None:
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    total_bytes = 0
+    try:
+        with open(target_path, "wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File exceeds the maximum upload size of {max_bytes / (1024 * 1024):.0f} MB."
+                    )
+                buffer.write(chunk)
+    except HTTPException:
+        if target_path.exists():
+            target_path.unlink(missing_ok=True)
+        raise
+    except Exception:
+        if target_path.exists():
+            target_path.unlink(missing_ok=True)
+        raise
+
+
 @app.post("/api/documents/upload", response_model=DocumentResponse, status_code=202)
 async def upload_document(
     background_tasks: BackgroundTasks, 
@@ -106,10 +132,7 @@ async def upload_document(
     target_conv_id = conversation_id or "default_conv"
     doc_id = str(uuid.uuid4())
     saved_path = settings.UPLOADS_DIR / f"{doc_id}_{file.filename}"
-    saved_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(saved_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    await _save_uploaded_file(file, saved_path, settings.MAX_UPLOAD_BYTES)
 
     repo = get_repository()
     repo.ensure_conversation(target_conv_id, title=f"Chat - {file.filename[:25]}")
@@ -171,6 +194,18 @@ def get_document_status(doc_id: str):
         created_at=d.created_at or "",
         error=d.error
     )
+
+
+@app.delete("/api/documents/{doc_id}")
+def delete_document(doc_id: str):
+    rag = get_rag_service()
+    repo = get_repository()
+    doc = repo.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    
+    rag.delete_document(doc_id)
+    return {"message": f"Document {doc_id} deleted."}
 
 
 @app.post("/api/query", response_model=QueryResponse)

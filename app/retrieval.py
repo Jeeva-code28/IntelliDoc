@@ -110,6 +110,34 @@ class BM25Index:
         for term, freq in self.df.items():
             self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
 
+    def delete_chunks(self, chunk_ids_to_remove: set):
+        if not self.chunk_ids or not chunk_ids_to_remove:
+            return
+        keep_indices = [
+            i for i, cid in enumerate(self.chunk_ids)
+            if cid not in chunk_ids_to_remove
+        ]
+        if not keep_indices:
+            self.clear()
+            return
+
+        self.chunk_ids = [self.chunk_ids[i] for i in keep_indices]
+        self.doc_tokens = [self.doc_tokens[i] for i in keep_indices]
+        self.doc_lengths = [self.doc_lengths[i] for i in keep_indices]
+        self.doc_conversations = [self.doc_conversations[i] for i in keep_indices]
+
+        # Re-compute DF and IDF
+        self.df.clear()
+        self.idf.clear()
+        for tokens in self.doc_tokens:
+            for t in set(tokens):
+                self.df[t] = self.df.get(t, 0) + 1
+
+        total_docs = len(self.chunk_ids)
+        self.avg_doc_len = sum(self.doc_lengths) / total_docs if total_docs > 0 else 0.0
+        for term, freq in self.df.items():
+            self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+
     def clear(self):
         self.chunk_ids.clear()
         self.doc_tokens.clear()

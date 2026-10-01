@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChat } from '../../context/ChatContext';
-import { MessageSquare, X, Paperclip, Send, Plus, Trash2, ChevronDown, File, Volume2, Square, Mic, AlertCircle } from 'lucide-react';
+import { MessageSquare, X, Paperclip, Send, Plus, Trash2, ChevronDown, File, Volume2, Square, Mic, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import DOMPurify from 'dompurify';
@@ -49,7 +49,8 @@ export default function ChatWindow() {
     activeConversation, 
     sendMessage, 
     deleteConversation,
-    uploadFiles
+    uploadFiles,
+    deleteDocument
   } = useChat();
 
   const messages = activeConversation?.messages || [];
@@ -133,6 +134,22 @@ export default function ChatWindow() {
     
     const cleanText = stripMarkdown(text);
     const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // Pick a more human-like voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoices = voices.filter(v => 
+      v.name.includes('Google') || 
+      v.name.includes('Natural') || 
+      v.name.includes('Premium') ||
+      v.name.includes('Samantha') ||
+      v.name.includes('Daniel')
+    );
+    if (preferredVoices.length > 0) {
+      utterance.voice = preferredVoices[0];
+    }
+    
+    utterance.rate = 0.95; // Slightly slower for better understandability
+    utterance.pitch = 1.0;
     
     utterance.onstart = () => setSpeakingMessageIndex(index);
     utterance.onend = () => setSpeakingMessageIndex(null);
@@ -390,9 +407,23 @@ export default function ChatWindow() {
                     <div className="flex flex-wrap gap-2 px-3 pt-2">
                       {docs.map((d, i) => (
                         <Tilt key={i} tiltMaxAngleX={10} tiltMaxAngleY={10} scale={1.05} transitionSpeed={2500} glareEnable={true} glareMaxOpacity={0.15}>
-                          <div className="flex items-center gap-1.5 bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] border border-[var(--color-border)] px-2.5 py-1 rounded-lg text-[11px] max-w-[150px] cursor-pointer shadow-sm" title={d.filename}>
-                            <File size={12} className="text-[var(--color-text-muted)]" />
-                            <span className="truncate font-medium">{d.filename}</span>
+                          <div className="flex items-center gap-1.5 bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] border border-[var(--color-border)] px-2.5 py-1 rounded-lg text-[11px] max-w-[150px] shadow-sm group">
+                            {d.status === 'processing' ? (
+                              <Loader2 size={12} className="animate-spin text-[var(--color-text-muted)]" />
+                            ) : (
+                              <File size={12} className="text-[var(--color-text-muted)]" />
+                            )}
+                            <span className="truncate font-medium cursor-default" title={d.filename}>{d.filename}</span>
+                            {(!isGenerating && messages.length === 0) && (
+                              <button
+                                type="button"
+                                onClick={() => deleteDocument(d.id)}
+                                className="ml-1 opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-red-400 transition-all cursor-pointer bg-transparent border-none flex items-center justify-center p-0.5 rounded-full hover:bg-red-400/10"
+                                title="Remove document"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
                           </div>
                         </Tilt>
                       ))}

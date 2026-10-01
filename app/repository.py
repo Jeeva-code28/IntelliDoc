@@ -451,6 +451,19 @@ class DatabaseRepository:
             conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
         return True
 
+    def delete_document(self, doc_id: str) -> bool:
+        """
+        Deletes a document and its cascade-related data (chunks, vectors).
+        """
+        with self.get_connection() as conn:
+            conn.execute(
+                "DELETE FROM vectors WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)",
+                (doc_id,)
+            )
+            conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
+            conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        return True
+
     # History Archive Operations
     def create_history_archive(self, record: Dict[str, Any]) -> str:
         with self.get_connection() as conn:

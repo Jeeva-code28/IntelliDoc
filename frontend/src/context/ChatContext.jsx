@@ -11,6 +11,7 @@ export function ChatProvider({ children }) {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [activeConversation, setActiveConversation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingFiles, setUploadingFiles] = useState([]);
 
   // Fetch all conversations on mount
   useEffect(() => {
@@ -119,25 +120,77 @@ export function ChatProvider({ children }) {
     }
   };
 
+  const pollDocumentStatus = async (convId, maxAttempts = 20) => {
+    if (!convId) return;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const res = await fetch(`/api/conversations/${convId}`);
+        if (!res.ok) break;
+        const data = await res.json();
+        setActiveConversation(data);
+
+        const docs = data.documents || [];
+        const stillProcessing = docs.some((d) => d.status === 'processing');
+        if (!stillProcessing) break;
+      } catch (err) {
+        console.error('Error polling document status:', err);
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
   const uploadFiles = async (files) => {
     if (!currentConversationId || !files || files.length === 0) return;
-    
+
+    const fileArray = Array.from(files);
+    setUploadingFiles((prev) => [...prev, ...fileArray.map((file) => file.name)]);
+
     try {
-      const uploadPromises = Array.from(files).map(file => {
+      for (const file of fileArray) {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('conversation_id', currentConversationId);
-        
-        return fetch(`/api/documents/upload`, {
+
+        const res = await fetch(`/api/documents/upload`, {
           method: 'POST',
           body: formData
         });
-      });
 
-      await Promise.all(uploadPromises);
-      loadActiveConversation(currentConversationId); // Refresh to show new docs
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Failed to upload ${file.name}:`, errText);
+          alert(`Failed to upload ${file.name}: ${errText}`);
+        }
+      }
+
+      await loadActiveConversation(currentConversationId);
+      await pollDocumentStatus(currentConversationId);
     } catch (err) {
       console.error('Error uploading files:', err);
+      alert('Error uploading files: ' + err.message);
+    } finally {
+      setUploadingFiles((prev) => prev.filter((name) => !fileArray.some((file) => file.name === name)));
+    }
+  };
+
+  const deleteDocument = async (docId) => {
+    if (!docId) return;
+    try {
+      const res = await fetch(`/api/documents/${docId}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete document');
+      
+      // Update local state to remove the document
+      setActiveConversation(prev => ({
+        ...prev,
+        documents: prev?.documents?.filter(d => d.id !== docId) || []
+      }));
+    } catch (err) {
+      console.error('Error deleting document:', err);
     }
   };
 
@@ -146,11 +199,13 @@ export function ChatProvider({ children }) {
     currentConversationId,
     activeConversation,
     loading,
+    uploadingFiles,
     setCurrentConversationId,
     createNewChat,
-    deleteConversation,
     sendMessage,
-    uploadFiles
+    deleteConversation,
+    uploadFiles,
+    deleteDocument
   };
 
   return (

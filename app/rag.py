@@ -255,17 +255,22 @@ class RAGService:
         injection_keywords = ["ignore all", "system prompt", "admin mode", "dan prompt", "unrestrained", "bypass network"]
         has_injection = any(kw in req.query.lower() for kw in injection_keywords)
 
+        conversational_keywords = ["hi", "hello", "hey", "how are you", "what's up", "good morning", "good evening", "good afternoon"]
+        is_conversational = req.query.strip().lower() in conversational_keywords
+
         if has_short_document:
             refusal_triggered = has_injection
         else:
             refusal_triggered = (
                 has_injection or
-                max_term_coverage == 0.0 or
-                (max_term_coverage < settings.RELEVANCE_COVERAGE_THRESHOLD and top_dense_score < 0.68) or
-                top_dense_score < settings.RELEVANCE_DENSE_THRESHOLD
+                (not is_conversational and (
+                    max_term_coverage == 0.0 or
+                    (max_term_coverage < settings.RELEVANCE_COVERAGE_THRESHOLD and top_dense_score < 0.68) or
+                    top_dense_score < settings.RELEVANCE_DENSE_THRESHOLD
+                ))
             )
 
-        if refusal_triggered or not candidate_chunks:
+        if refusal_triggered or (not candidate_chunks and not is_conversational):
             refusal_text = "I cannot answer this based on the provided document."
             total_latency_ms = (time.perf_counter() - start_total) * 1000.0
 
@@ -417,6 +422,36 @@ class RAGService:
 
         logger.info("conversation_deleted_and_archived", conv_id=conv_id, archive_id=archive_meta["id"])
         return archive_meta
+
+    def delete_document(self, doc_id: str) -> bool:
+        """
+        Deletes a single document and its associated chunks from all stores.
+        """
+        # Fetch chunk IDs for this document
+        chunk_ids_to_remove = set()
+        keys_to_remove = []
+        for cid, chunk in self.chunks_cache.items():
+            if chunk.document_id == doc_id:
+                chunk_ids_to_remove.add(cid)
+                keys_to_remove.append(cid)
+        
+        # 1. Clean up in-memory chunks cache
+        for k in keys_to_remove:
+            self.chunks_cache.pop(k, None)
+
+        # 2. Clean up BM25 index
+        if chunk_ids_to_remove:
+            self.bm25_index.delete_chunks(chunk_ids_to_remove)
+
+        # 3. Clean up Vector store (some stores like qdrant and numpy support delete by document_id)
+        if hasattr(self.vector_store, "delete"):
+            self.vector_store.delete(doc_id)
+
+        # 4. Clean up SQLite database
+        self.repo.delete_document(doc_id)
+        
+        logger.info("document_deleted", doc_id=doc_id)
+        return True
 
 
 _rag_service = None

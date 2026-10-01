@@ -94,6 +94,9 @@ class Settings:
     TABLE_TRIAGE_MIN_CHARS: int = 40
     TABLE_TRIAGE_MIN_DIGIT_RATIO: float = 0.02
 
+    # Upload Settings
+    MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_UPLOAD_BYTES", str(700 * 1024 * 1024)))
+
     def __post_init__(self):
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)

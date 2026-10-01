@@ -55,11 +55,15 @@ class MultiProviderLLMClient:
 
         elif prov == "ollama":
             import socket
+            from urllib.parse import urlparse
+            parsed = urlparse(settings.OLLAMA_BASE_URL)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 11434
             try:
-                with socket.create_connection(("localhost", 11434), timeout=1.5):
+                with socket.create_connection((host, port), timeout=1.5):
                     pass
-            except Exception:
-                raise ValueError("Local Ollama service not running on port 11434.")
+            except OSError:
+                raise ValueError(f"Local Ollama service not reachable at {host}:{port}.")
             client = OpenAI(
                 api_key="ollama",
                 base_url=settings.OLLAMA_BASE_URL,
@@ -90,7 +94,8 @@ class MultiProviderLLMClient:
             "   'I cannot answer this based on the provided document.'\n"
             "4. Do NOT use outside knowledge or make assumptions.\n"
             "5. Maintain objective rigor.\n"
-            "6. Use all context given, including the document summary, to reason about the document as a whole rather than only pattern-matching keywords. Infer type/subject from context even if not explicitly labeled. Only say something isn't in the document after genuinely checking the full context provided."
+            "6. Use all context given, including the document summary, to reason about the document as a whole rather than only pattern-matching keywords. Infer type/subject from context even if not explicitly labeled. Only say something isn't in the document after genuinely checking the full context provided.\n"
+            "7. If the user query is a greeting or general conversational phrase (e.g., 'hi', 'hello', 'how are you'), you may respond warmly and conversationally without citing context."
         )
 
         user_content = f"CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
