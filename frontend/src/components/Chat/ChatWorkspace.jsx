@@ -4,7 +4,7 @@ import { useChat } from '../../context/ChatContext';
 export default function ChatWorkspace() {
   const { activeConversation, sendMessage, deleteConversation } = useChat();
   const [inputValue, setInputValue] = useState('');
-  const [provider, setProvider] = useState('ollama');
+  const [provider, setProvider] = useState('huggingface');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -42,6 +42,7 @@ export default function ChatWorkspace() {
             <span>Delete Chat</span>
           </button>
           <select value={provider} onChange={e => setProvider(e.target.value)} className="bg-[rgba(17,24,39,0.7)] text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-md px-3 py-1.5 text-[12px] font-medium outline-none cursor-pointer focus:border-[var(--color-border-highlight)]">
+            <option value="huggingface">Hugging Face (DeepSeek-V4)</option>
             <option value="ollama">Ollama (Llama-3.1 8B Instruct Local)</option>
             <option value="gemini">Gemini Flash (Google AI)</option>
             <option value="groq">Groq (Llama-3.3 70B)</option>

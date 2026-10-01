@@ -1,5 +1,36 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+
+function useFadeOnScroll() {
+  const ref = useRef(null);
+  const [style, setStyle] = useState({
+    opacity: 0,
+    transform: "translateY(0px)",
+    transition: "opacity 0.7s ease, transform 0.7s ease",
+  });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setStyle({ opacity: 1, transform: "translateY(0px)", transition: "opacity 0.7s ease, transform 0.7s ease" });
+        } else {
+          setStyle({ opacity: 0, transform: "translateY(32px)", transition: "opacity 0.5s ease, transform 0.5s ease" });
+        }
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, style };
+}
 import hero1 from "../../assets/hero(background_removed).png";
+import GetStarted from "../../pages/LearnMore";
+import { useNavigate } from "react-router-dom";
 
 const palette = {
   ink: "#040710",
@@ -14,13 +45,31 @@ const palette = {
 };
 
 export default function DocumentChatbotHero() {
+  const navigate = useNavigate();
+  const s1 = useFadeOnScroll();
+
+  const fullText = "Upload your documents and ask questions in natural language. DocuChat uses AI to understand your files, find the information you need, and give clear answers without making you search through pages manually.";
+  const [displayedText, setDisplayedText] = useState("");
+
+  useEffect(() => {
+    let i = 0;
+    const intervalId = setInterval(() => {
+      setDisplayedText(fullText.slice(0, i));
+      i++;
+      if (i > fullText.length) {
+        clearInterval(intervalId);
+      }
+    }, 15);
+    return () => clearInterval(intervalId);
+  }, []);
+
   return (
     <main
       className="min-h-screen overflow-hidden font-sans"
       style={{ backgroundColor: palette.ink, color: palette.white }}
     >
       {/* Navigation */}
-      <header className="relative z-20 border-b border-[#2C6CA4]/30">
+      <header className="relative z-20">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-10">
           <a href="#" className="flex items-center gap-3">
             <div
@@ -45,45 +94,19 @@ export default function DocumentChatbotHero() {
             </span>
           </a>
 
-          <div className="hidden items-center gap-9 text-sm md:flex">
-            <a
-              href="#home"
-              className="transition hover:text-[#EB5D22]"
-              style={{ color: palette.white }}
-            >
-              Home
-            </a>
-            <a
-              href="#about"
-              className="transition hover:text-[#EB5D22]"
-              style={{ color: palette.white }}
-            >
-              About Us
-            </a>
-            <a
-              href="#contact"
-              className="transition hover:text-[#EB5D22]"
-              style={{ color: palette.white }}
-            >
-              Contact
-            </a>
-          </div>
-
           <button
             type="button"
-            className="rounded-full px-5 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5"
-            style={{
-              backgroundColor: palette.orange,
-              color: palette.white,
-            }}
+            onClick={() => navigate("/")}
+            className="text-sm font-semibold transition hover:text-[#EB5D22] cursor-pointer"
+            style={{ color: palette.white }}
           >
-            Sign Up
+            Home
           </button>
         </nav>
       </header>
 
       {/* Hero */}
-      <section id="home" className="relative">
+      <section id="home" className="relative" ref={s1.ref} style={s1.style}>
         {/* Decorative shapes using only image colors */}
         <div
           className="pointer-events-none absolute -left-40 top-32 h-96 w-96 rounded-full blur-3xl opacity-40"
@@ -99,27 +122,32 @@ export default function DocumentChatbotHero() {
           <div className="max-w-2xl">
 
             <h1 className="text-5xl font-black leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
-              Talk to your
-              <span className="block" style={{ color: palette.orange }}>
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1, duration: 0.8 }}>Talk </motion.span>
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4, duration: 0.8 }}>to </motion.span>
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7, duration: 0.8 }}>your </motion.span>
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1, duration: 0.8 }}
+                className="block"
+                style={{ color: palette.orange }}
+              >
                 documents.
-              </span>
+              </motion.span>
             </h1>
 
             <p
               id="about"
-              className="mt-7 max-w-xl text-base leading-8 sm:text-lg"
+              className="mt-7 max-w-xl text-base leading-8 sm:text-lg min-h-[96px]"
               style={{ color: "#ADC0CF" }}
             >
-              Upload your documents and ask questions in natural language.
-              DocuChat uses AI to understand your files, find the information
-              you need, and give clear answers without making you search through
-              pages manually.
+              {displayedText}
             </p>
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <button
                 type="button"
-                className="rounded-xl px-6 py-3.5 font-bold transition hover:-translate-y-1"
+                className="rounded-xl px-6 py-3.5 font-bold transition hover:-translate-y-1 cursor-pointer"
                 style={{
                   backgroundColor: palette.orange,
                   color: palette.white,
@@ -130,7 +158,8 @@ export default function DocumentChatbotHero() {
 
               <button
                 type="button"
-                className="rounded-xl border px-6 py-3.5 font-bold transition hover:-translate-y-1"
+                onClick={() => navigate("/learn-more")}
+                className="rounded-xl border px-6 py-3.5 font-bold transition hover:-translate-y-1 cursor-pointer"
                 style={{
                   borderColor: palette.blue,
                   backgroundColor: palette.navy,
@@ -147,9 +176,12 @@ export default function DocumentChatbotHero() {
                 ["01", "Upload", "Add your documents"],
                 ["02", "Ask", "Use natural language"],
                 ["03", "Understand", "Get useful answers"],
-              ].map(([number, title, text]) => (
-                <div
+              ].map(([number, title, text], index) => (
+                <motion.div
                   key={number}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1 + index * 0.2, duration: 0.6 }}
                   className="rounded-2xl border p-4"
                   style={{
                     borderColor: `${palette.blue}70`,
@@ -169,7 +201,7 @@ export default function DocumentChatbotHero() {
                   >
                     {text}
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -187,7 +219,10 @@ export default function DocumentChatbotHero() {
                 backgroundColor: "transparent"
               }}
             >
-              <img
+              <motion.img
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.5, duration: 1 }}
                 src={hero1}
                 alt="AI document chatbot illustration"
                 className="h-auto w-full rounded-[1.5rem] object-cover"
@@ -195,16 +230,6 @@ export default function DocumentChatbotHero() {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* Contact anchor */}
-      <section
-        id="contact"
-        className="mx-auto max-w-7xl px-6 pb-10 text-center lg:px-10"
-      >
-        <p className="text-sm" style={{ color: "#ADC0CF" }}>
-          A smarter way to interact with your documents.
-        </p>
       </section>
     </main>
   );

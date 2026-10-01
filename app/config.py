@@ -74,12 +74,14 @@ class Settings:
     RELEVANCE_COVERAGE_THRESHOLD: float = 0.60
 
     # LLM Settings
-    DEFAULT_LLM_PROVIDER: str = os.getenv("DEFAULT_LLM_PROVIDER", "gemini")
+    DEFAULT_LLM_PROVIDER: str = os.getenv("DEFAULT_LLM_PROVIDER", "huggingface")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    HUGGINGFACE_API_KEY: str = os.getenv("HUGGINGFACE_API_KEY", "")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
     OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    HUGGINGFACE_BASE_URL: str = os.getenv("HUGGINGFACE_BASE_URL", "https://router.huggingface.co/v1")
 
     # Configurable Model Settings
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "hf.co/helloollel/Llama-3.1-8B-instruct-bilibili-gguf:Q4_K_M")
@@ -87,6 +89,7 @@ class Settings:
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731:novita")
 
     # Parsing Settings
     FONT_PROFILING_PAGES: int = 15

@@ -72,6 +72,8 @@ dist/
 *.egg-info/
 *.egg
 .eggs/
+node_modules/
+
 
 # OS Temporary Files
 *.tmp

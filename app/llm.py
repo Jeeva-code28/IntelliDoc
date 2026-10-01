@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
 
@@ -23,7 +24,17 @@ class MultiProviderLLMClient:
     def _get_provider_client(self, provider: Optional[str] = None) -> Tuple[OpenAI, str, str]:
         prov = (provider or self.default_provider).lower()
 
-        if prov == "gemini":
+        if prov == "huggingface":
+            api_key = settings.HUGGINGFACE_API_KEY
+            if not api_key:
+                raise ValueError("Hugging Face API key not configured.")
+            client = OpenAI(
+                api_key=api_key,
+                base_url=settings.HUGGINGFACE_BASE_URL
+            )
+            return client, settings.HUGGINGFACE_MODEL, "huggingface"
+
+        elif prov == "gemini":
             api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
             if not api_key or api_key == "gemini-key":
                 raise ValueError("Gemini API key not configured.")
@@ -142,7 +153,7 @@ class MultiProviderLLMClient:
         user_content = f"{history_context}CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
 
         preferred = provider or self.default_provider
-        providers_to_try = [preferred, "gemini", "groq", "openai", "ollama"]
+        providers_to_try = [preferred, "huggingface", "gemini", "groq", "openai", "ollama"]
         seen = set()
 
         for prov in providers_to_try:
@@ -210,16 +221,25 @@ class MultiProviderLLMClient:
 
         try:
             client, model, prov_name = self._get_provider_client(provider or self.default_provider)
+            kwargs = {"temperature": 0.0}
+            if prov_name not in ["huggingface", "ollama"]:
+                kwargs["response_format"] = {"type": "json_object"}
+                
             response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": verify_prompt},
                     {"role": "user", "content": user_content}
                 ],
-                temperature=0.0,
-                response_format={"type": "json_object"}
+                **kwargs
             )
             raw_text = response.choices[0].message.content.strip()
+            
+            # Clean markdown formatting if present
+            match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+            if match:
+                raw_text = match.group(0)
+                
             parsed = json.loads(raw_text)
             return VerificationBadge(
                 status=parsed.get("status", "supported"),
@@ -258,16 +278,25 @@ class MultiProviderLLMClient:
 
         try:
             client, model, prov_name = self._get_provider_client(provider or self.default_provider)
+            kwargs = {"temperature": 0.0}
+            if prov_name not in ["huggingface", "ollama"]:
+                kwargs["response_format"] = {"type": "json_object"}
+                
             response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content}
                 ],
-                temperature=0.0,
-                response_format={"type": "json_object"}
+                **kwargs
             )
             raw_text = response.choices[0].message.content.strip()
+            
+            # Clean markdown formatting if present
+            match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+            if match:
+                raw_text = match.group(0)
+                
             parsed = json.loads(raw_text)
             return {
                 "document_type": parsed.get("document_type", "Unknown"),

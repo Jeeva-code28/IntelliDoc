@@ -266,7 +266,6 @@ def classify_with_llm(query: str, llm_client) -> Tuple[Intent, float, str]:
                 {"role": "user", "content": query[:500]},
             ],
             temperature=0.0,
-            max_tokens=10,
         )
         raw = (resp.choices[0].message.content or "").strip().lower()
         raw = re.sub(r"[^a-z_]", "", raw)
