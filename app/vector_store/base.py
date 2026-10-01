@@ -26,6 +26,10 @@ class VectorStore(ABC):
         """Delete all vectors associated with a document_id."""
         pass
 
+    def delete_conversation(self, conversation_id: str) -> None:
+        """Delete all vectors associated with a conversation_id."""
+        pass
+
     @abstractmethod
     def clear(self) -> None:
         """Clear all stored vectors and indices."""

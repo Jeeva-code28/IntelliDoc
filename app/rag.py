@@ -10,6 +10,7 @@ from app.schemas import (
 from app.parsing import parse_pdf_document, sandbox_extract_zip_attachment
 from app.multimedia import get_multimedia_processor
 from app.embeddings import get_embedding_engine
+from app.history import get_history_manager
 from app.repository import DatabaseRepository, get_repository
 from app.vector_store import VectorStore, NumpyVectorStore
 from app.retrieval import (
@@ -56,9 +57,10 @@ class RAGService:
         self.initialized = True
         logger.info("rag_service_indexes_ready", chunk_count=len(self.chunks_cache))
 
-    def ingest_document(self, file_path: str, doc_id: str, original_filename: str) -> bool:
+    def ingest_document(self, file_path: str, doc_id: str, original_filename: str, conversation_id: str = "default_conv") -> bool:
         """
-        Ingests PDF documents or standalone multimedia attachments (video, audio, image, tabular CSV, zip).
+        Ingests PDF documents or standalone multimedia attachments (video, audio, image, tabular CSV, zip)
+        strictly partitioned by conversation_id.
         """
         start_time = time.perf_counter()
 
@@ -70,8 +72,12 @@ class RAGService:
                     filename=original_filename,
                     file_type="application/pdf" if file_path.lower().endswith(".pdf") else "application/octet-stream",
                     page_count=0,
-                    file_path=file_path
+                    file_path=file_path,
+                    conversation_id=conversation_id
                 )
+            else:
+                with self.repo.get_connection() as conn:
+                    conn.execute("UPDATE documents SET conversation_id = ? WHERE id = ?", (conversation_id, doc_id))
 
             self.repo.update_document_status(doc_id, "processing", progress=0.1)
             ext = Path(file_path).suffix.lower()
@@ -79,19 +85,19 @@ class RAGService:
 
             # Multimodal parsing router
             if ext == ".pdf":
-                chunks = parse_pdf_document(file_path, doc_id)
+                raw_chunks = parse_pdf_document(file_path, doc_id)
             elif ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
-                chunks = multimedia.process_video_file(file_path, doc_id, original_filename)
+                raw_chunks = multimedia.process_video_file(file_path, doc_id, original_filename)
             elif ext in [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac"]:
-                chunks = multimedia.process_audio_file(file_path, doc_id, original_filename)
+                raw_chunks = multimedia.process_audio_file(file_path, doc_id, original_filename)
             elif ext in [".png", ".jpg", ".jpeg", ".webp", ".svg", ".bmp", ".tiff"]:
-                chunks = multimedia.process_image_attachment(file_path, doc_id, original_filename)
+                raw_chunks = multimedia.process_image_attachment(file_path, doc_id, original_filename)
             elif ext in [".csv", ".tsv"]:
-                chunks = multimedia.process_tabular_attachment(file_path, doc_id, original_filename)
+                raw_chunks = multimedia.process_tabular_attachment(file_path, doc_id, original_filename)
             elif ext == ".zip":
                 is_quarantined, bad_files = sandbox_extract_zip_attachment(Path(file_path), doc_id)
                 content_type = "attachment_quarantined" if is_quarantined else "attachment"
-                chunks = [
+                raw_chunks = [
                     Chunk(
                         id=str(uuid.uuid4()),
                         document_id=doc_id,
@@ -101,48 +107,51 @@ class RAGService:
                         content_type=content_type,
                         text=f"[{content_type.capitalize()}] Archive {original_filename}",
                         context_text=f"Uploaded ZIP Archive: {original_filename}. Quarantined: {is_quarantined}",
+                        conversation_id=conversation_id,
                         bbox=None,
                         asset_path=str(file_path),
                         temporal_start=None,
                         temporal_end=None,
-                        metadata={"filename": original_filename, "quarantined": is_quarantined}
+                        metadata={"filename": original_filename, "quarantined": is_quarantined, "conversation_id": conversation_id}
                     )
                 ]
             else:
-                # Default text extraction
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    txt = f.read()
-                chunks = [
-                    Chunk(
-                        id=str(uuid.uuid4()),
-                        document_id=doc_id,
-                        filename=original_filename,
-                        page_number=1,
-                        section="Document Text",
-                        content_type="text",
-                        text=f"{original_filename}. {txt[:500]}",
-                        context_text=f"Document {original_filename}:\n\n{txt}",
-                        bbox=None,
-                        asset_path=None,
-                        temporal_start=None,
-                        temporal_end=None,
-                        metadata={"length": len(txt)}
-                    )
-                ]
+                # Sliding-window text chunking for large text/markdown/code/log documents
+                raw_chunks = multimedia.process_text_document(file_path, doc_id, original_filename)
 
             self.repo.update_document_status(doc_id, "processing", progress=0.5)
 
-            if not chunks:
+            if not raw_chunks:
                 self.repo.update_document_status(doc_id, "failed", error="No chunks extracted from document.")
                 return False
+
+            # Ensure all chunks carry the target conversation_id
+            chunks = []
+            for c in raw_chunks:
+                chunks.append(Chunk(
+                    id=c.id,
+                    document_id=c.document_id,
+                    filename=c.filename,
+                    page_number=c.page_number,
+                    section=c.section,
+                    content_type=c.content_type,
+                    text=c.text,
+                    context_text=c.context_text,
+                    conversation_id=conversation_id,
+                    bbox=c.bbox,
+                    asset_path=c.asset_path,
+                    temporal_start=c.temporal_start,
+                    temporal_end=c.temporal_end,
+                    metadata={**c.metadata, "conversation_id": conversation_id}
+                ))
 
             # Stage 4: Embed passages (bare text without query prefix)
             passage_texts = [c.text for c in chunks]
             vectors = self.embedding_engine.embed_passages(passage_texts)
             self.repo.update_document_status(doc_id, "processing", progress=0.8)
 
-            # Stage 5: SQLite Batch Insert (float32 BLOBs)
-            self.repo.insert_chunks_and_vectors(chunks, vectors)
+            # Stage 5: SQLite Batch Insert (float32 BLOBs) with conversation_id
+            self.repo.insert_chunks_and_vectors(chunks, vectors, conversation_id=conversation_id)
 
             # Stage 6: Integrity Gate Check
             is_valid = self.repo.check_integrity_gate(doc_id)
@@ -150,7 +159,7 @@ class RAGService:
                 self.repo.update_document_status(doc_id, "failed", error="Integrity gate check failed: chunk_count != vector_count.")
                 return False
 
-            # Update in-memory vector store & BM25 index
+            # Update in-memory vector store & BM25 index with conversation partition
             for c in chunks:
                 self.chunks_cache[c.id] = c
             self.vector_store.upsert(chunks, vectors)
@@ -180,18 +189,17 @@ class RAGService:
             self.initialize_indexes()
 
         conv_id = req.conversation_id or str(uuid.uuid4())
-        if not req.conversation_id:
-            self.repo.create_conversation(conv_id)
+        self.repo.ensure_conversation(conv_id)
 
         # STAGE 1: Fast Asymmetric Embed Query (<15ms)
         start_retrieval = time.perf_counter()
         query_vec = self.embedding_engine.embed_query(req.query)
 
-        # STAGE 2: Exact NumPy Vector Search (<25ms P99)
-        dense_results = self.vector_store.search(query_vec, k=settings.TOP_K_DENSE)
+        # STAGE 2: Exact NumPy Vector Search scoped to conversation (<25ms P99)
+        dense_results = self.vector_store.search(query_vec, k=settings.TOP_K_DENSE, conversation_id=conv_id)
 
-        # STAGE 3: Custom BM25 Sparse Search (<5ms)
-        sparse_results = self.bm25_index.search(req.query, top_k=settings.TOP_K_SPARSE)
+        # STAGE 3: Custom BM25 Sparse Search scoped to conversation (<5ms)
+        sparse_results = self.bm25_index.search(req.query, top_k=settings.TOP_K_SPARSE, conversation_id=conv_id)
 
         # STAGE 4: RRF Fusion (k=60)
         fusion_results = rrf_fusion(dense_results, sparse_results, k=settings.RRF_K)
@@ -204,7 +212,13 @@ class RAGService:
 
         # STAGE 6: Dual Relevance Gate
         top_dense_score = dense_results[0][1] if dense_results else 0.0
-        candidate_chunks = [self.chunks_cache[cid] for cid, _ in top_candidates if cid in self.chunks_cache]
+        candidate_chunks = [
+            self.chunks_cache[cid] for cid, _ in top_candidates 
+            if cid in self.chunks_cache and (
+                getattr(self.chunks_cache[cid], "conversation_id", None) == conv_id
+            )
+        ]
+
 
         max_term_coverage = max(
             [calculate_term_coverage(req.query, c.text) for c in candidate_chunks]
@@ -316,6 +330,49 @@ class RAGService:
             retrieval_latency_ms=retrieval_latency_ms,
             conversation_id=conv_id
         )
+
+    def delete_conversation(self, conv_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Deletes a conversation and all associated documents, chunks, vectors, and messages.
+        Before deletion, archives the full conversation transcript and multimodal citations
+        into Markdown and JSON files in data/history, recording the entry in history_archives.
+        """
+        # 1. Fetch conversation details & messages
+        conv = self.repo.get_conversation(conv_id)
+        if not conv:
+            return None
+
+        # 2. Archive to history via HistoryManager
+        history_mgr = get_history_manager()
+        archive_meta = history_mgr.generate_archive(
+            conv_id=conv_id,
+            title=conv.title or "Conversation",
+            created_at=conv.created_at,
+            documents=conv.documents or [],
+            messages=conv.messages or [],
+            chunks_map=self.chunks_cache
+        )
+
+        # 3. Store archive metadata in database
+        self.repo.create_history_archive(archive_meta)
+
+        # 4. Clean up SQLite database
+        self.repo.delete_conversation(conv_id)
+
+        # 5. Clean up in-memory vector store, BM25 index, and chunks cache
+        self.vector_store.delete_conversation(conv_id)
+        self.bm25_index.delete_conversation(conv_id)
+
+        # Remove from chunks cache
+        keys_to_remove = [
+            cid for cid, chunk in self.chunks_cache.items()
+            if getattr(chunk, "conversation_id", None) == conv_id or chunk.metadata.get("conversation_id") == conv_id
+        ]
+        for k in keys_to_remove:
+            self.chunks_cache.pop(k, None)
+
+        logger.info("conversation_deleted_and_archived", conv_id=conv_id, archive_id=archive_meta["id"])
+        return archive_meta
 
 
 _rag_service = None

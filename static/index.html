@@ -11,17 +11,63 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar: Ingestion & Document Manager -->
-        <aside class="sidebar">
+        <!-- Sidebar Pane 1: Conversation History -->
+        <aside class="conversations-sidebar">
             <div class="brand-header">
                 <div class="logo-icon">NPN</div>
                 <div class="brand-text">
                     <h1>Project NPN</h1>
-                    <span class="subtitle">Multimodal Intelligence • Proof • Numbers</span>
+                    <span class="subtitle">Multi-Doc QA • Zero Spillover</span>
                 </div>
             </div>
 
-            <!-- Upload Area with Multimodal Support -->
+            <button class="new-chat-btn" id="newChatBtn" onclick="createNewChat()">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>New Conversation</span>
+            </button>
+
+            <button class="history-toggle-btn" id="historyToggleBtn" onclick="openHistoryModal()">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>History & Archives</span>
+                <span class="history-count-badge" id="historyCountBadge">0</span>
+            </button>
+
+            <div class="conversations-list-container">
+                <div class="sidebar-subheading">Recent Conversations</div>
+                <div class="conversations-list" id="conversationsList">
+                    <!-- Dynamic conversation items -->
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="spec-pill">
+                    <span class="pulse-dot active"></span>
+                    <span>Zero Spillover Partitioning</span>
+                </div>
+                <div class="spec-pill">
+                    <span class="blob-icon">BLOB</span>
+                    <span>100% Local-First Privacy</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Sidebar Pane 2: Ingestion & Knowledge Base for Active Conversation -->
+        <aside class="knowledge-sidebar">
+            <div class="knowledge-header">
+                <div class="section-title">
+                    <span>Active Knowledge Base</span>
+                    <span class="doc-count-badge" id="docCountBadge">0 files</span>
+                </div>
+                <p class="knowledge-subtext">Documents strictly scoped to current conversation</p>
+            </div>
+
+            <!-- Upload Dropzone -->
             <div class="upload-section">
                 <div class="drop-zone" id="dropZone">
                     <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -29,9 +75,9 @@
                         <polyline points="17 8 12 3 7 8"></polyline>
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
-                    <p class="drop-text">Drag & Drop Documents or Media</p>
-                    <span class="drop-subtext">PDF, Video (MP4), Audio (MP3), Images, CSV, ZIP</span>
-                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.mp4,.mov,.avi,.mp3,.wav,.csv,.zip" hidden>
+                    <p class="drop-text">Upload to this Chat</p>
+                    <span class="drop-subtext">PDF, TXT, CSV, Video, Audio, ZIP</span>
+                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.mp4,.mov,.avi,.mp3,.wav,.csv,.tsv,.zip,.txt,.md,.markdown,.log,.json" multiple hidden>
                 </div>
 
                 <!-- Active Upload Progress -->
@@ -49,28 +95,8 @@
 
             <!-- Ingested Documents List -->
             <div class="documents-section">
-                <div class="section-title">
-                    <span>Knowledge Base & Attachments</span>
-                    <span class="doc-count-badge" id="docCountBadge">0</span>
-                </div>
                 <div class="documents-list" id="documentsList">
-                    <div class="empty-docs">No documents ingested yet</div>
-                </div>
-            </div>
-
-            <!-- System Specs & Footer -->
-            <div class="sidebar-footer">
-                <div class="spec-pill">
-                    <span class="pulse-dot"></span>
-                    <span>Exact NumPy Vector Search (&lt;35ms)</span>
-                </div>
-                <div class="spec-pill">
-                    <span class="blob-icon">BLOB</span>
-                    <span>SQLite float32 Vectors + BM25</span>
-                </div>
-                <div class="spec-pill">
-                    <span class="pulse-dot active"></span>
-                    <span>Multimodal: PDF • Video • Audio • Images • Tables</span>
+                    <div class="empty-docs">No documents in this conversation. Drag files above to build its knowledge base.</div>
                 </div>
             </div>
         </aside>
@@ -80,10 +106,20 @@
             <!-- Header Bar -->
             <header class="chat-header">
                 <div class="header-status">
-                    <h2>Multimodal Document Intelligence Workspace</h2>
-                    <p>Grounded Cross-Modal Q&A with Verification Badges & Proof Citations</p>
+                    <div class="active-conv-title-row">
+                        <h2 id="activeConvTitle">Active Conversation</h2>
+                        <span class="conv-badge" id="activeConvBadge">Conversation-Isolated</span>
+                    </div>
+                    <p id="activeConvSubtext">Grounded Multimodal Q&A with Fact Verification & Source Citations</p>
                 </div>
                 <div class="header-controls">
+                    <button class="header-action-btn delete" id="deleteActiveConvBtn" onclick="confirmDeleteCurrentConversation()" title="Delete & Archive this conversation">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        <span>Delete Chat</span>
+                    </button>
                     <select id="llmProviderSelect" class="provider-select">
                         <option value="gemini">Gemini Flash (Google AI)</option>
                         <option value="groq">Groq (Llama-3.3 70B)</option>
@@ -93,29 +129,79 @@
                 </div>
             </header>
 
-            <!-- Messages Container -->
-            <div class="messages-container" id="messagesContainer">
-                <!-- Welcome Banner -->
-                <div class="welcome-card">
-                    <div class="welcome-glow"></div>
-                    <div class="welcome-icon">⚡</div>
-                    <h3>Welcome to Project NPN Multimodal</h3>
-                    <p>High-performance local-first RAG engineered for financial reports, tables, figures, embedded attachments, video keyframe timelines, and audio transcripts.</p>
-                    <div class="sample-queries">
-                        <button class="sample-btn" onclick="useSampleQuery('What is the total revenue and profit margin breakdown in the financial tables?')">
-                            📊 Financial Table Analysis
-                        </button>
-                        <button class="sample-btn" onclick="useSampleQuery('What executive guidance and cash remarks were spoken in the audio call?')">
-                            🎙️ Spoken Audio Guidance
-                        </button>
-                        <button class="sample-btn" onclick="useSampleQuery('What scenes and performance metrics are shown in the video presentation?')">
-                            🎬 Video Keyframe Timeline
-                        </button>
-                        <button class="sample-btn" onclick="useSampleQuery('Explain the charts, figures, and visual diagrams extracted from the report.')">
-                            🖼️ Visual Figure & Diagram Audit
-                        </button>
+            <!-- Chat Middle Area: Messages + Floating Prompt Navigator -->
+            <div class="chat-body-layout">
+                <!-- Messages Container -->
+                <div class="messages-container" id="messagesContainer">
+                    <!-- Welcome Banner -->
+                    <div class="welcome-card" id="welcomeCard">
+                        <div class="welcome-glow"></div>
+                        <div class="welcome-icon">⚡</div>
+                        <h3>Conversation-Scoped Multimodal Workspace</h3>
+                        <p>Each conversation maintains its own private knowledge base. Upload 1 or more documents, switch between conversations, or return anytime with zero knowledge spillover.</p>
+                        <div class="sample-queries">
+                            <button class="sample-btn" onclick="useSampleQuery('What is the total revenue and profit breakdown in the uploaded documents?')">
+                                📊 Financial Table Analysis
+                            </button>
+                            <button class="sample-btn" onclick="useSampleQuery('What executive remarks and decisions are recorded in the attached files?')">
+                                🎙️ Executive Remarks & Audio
+                            </button>
+                            <button class="sample-btn" onclick="useSampleQuery('Summarize key quantitative metrics and findings from all files in this chat.')">
+                                📑 Multi-Document Summary
+                            </button>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Vertical Prompt Timeline Scrubber & Multi-line Navigator -->
+                <aside class="prompt-navigator" id="promptNavigator" aria-label="Conversation Prompt Navigation">
+                    <div class="nav-control-top">
+                        <button class="nav-jump-btn" id="jumpTopBtn" onclick="jumpToPromptPosition('top')" title="Smoothly scroll to Top Prompt">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <polyline points="18 15 12 9 6 15"></polyline>
+                            </svg>
+                            <span class="jump-label">Top</span>
+                        </button>
+                    </div>
+
+                    <div class="nav-track-container" id="navTrackContainer">
+                        <div class="nav-rail"></div>
+                        <div class="nav-scrubber-thumb" id="navScrubberThumb"></div>
+                        <div class="nav-ticks-wrapper" id="navTicksWrapper">
+                            <!-- Dynamic prompt multi-line ticks -->
+                        </div>
+                    </div>
+
+                    <div class="nav-control-mid">
+                        <button class="nav-jump-btn mid" id="jumpMidBtn" onclick="jumpToPromptPosition('mid')" title="Smoothly scroll to Middle Prompt">
+                            <span class="dot-mid"></span>
+                            <span class="jump-label">Mid</span>
+                        </button>
+                    </div>
+
+                    <div class="nav-control-bottom">
+                        <button class="nav-jump-btn" id="jumpBottomBtn" onclick="jumpToPromptPosition('bottom')" title="Smoothly scroll to Bottom Prompt">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                            <span class="jump-label">Bot</span>
+                        </button>
+                    </div>
+
+                    <!-- Scrollable Hover Popover Dock showing all conversation prompts -->
+                    <div class="prompt-hover-popover hidden" id="promptHoverPopover">
+                        <div class="popover-header">
+                            <div class="popover-header-title">
+                                <span>Conversation Prompts</span>
+                                <span class="popover-count-badge" id="popoverPromptCount">0</span>
+                            </div>
+                            <span class="popover-hint">Scroll & click any prompt to navigate</span>
+                        </div>
+                        <div class="popover-prompts-list" id="popoverPromptsList">
+                            <!-- Dynamic scrollable prompt cards -->
+                        </div>
+                    </div>
+                </aside>
             </div>
 
             <!-- Input Bar -->
@@ -124,7 +210,7 @@
                     <input 
                         type="text" 
                         id="queryInput" 
-                        placeholder="Ask a grounded question across text, tables, figures, video, or audio..." 
+                        placeholder="Ask a question grounded in this conversation's documents..." 
                         autocomplete="off"
                     >
                     <button type="submit" id="sendBtn" class="send-btn">
@@ -151,6 +237,81 @@
             </div>
             <div class="modal-body" id="modalCitationBody">
                 <!-- Dynamic Citation Media Content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal-overlay hidden" id="deleteConfirmModalOverlay">
+        <div class="modal-card confirm-modal-card">
+            <div class="modal-header danger-header">
+                <div class="modal-header-left">
+                    <span class="modal-modality-badge danger">⚠️ CONFIRM DELETION</span>
+                    <h3>Delete Conversation</h3>
+                </div>
+                <button class="close-modal-btn" onclick="closeDeleteConfirmModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="delete-warning-text">
+                    Are you sure you want to delete <strong id="deleteTargetConvTitle">this conversation</strong>?
+                </p>
+                <div class="delete-archive-notice">
+                    <div class="archive-icon">📦</div>
+                    <div class="archive-text">
+                        <strong>Automatic History Archiving Enabled</strong>
+                        <span>All prompts, assistant replies, verification badges, and source citations will be compiled into a permanent export archive file in your History section.</span>
+                    </div>
+                </div>
+                <div class="modal-actions-row">
+                    <button class="modal-btn cancel-btn" onclick="closeDeleteConfirmModal()">Cancel</button>
+                    <button class="modal-btn delete-confirm-btn" id="confirmDeleteActionBtn" onclick="executeConversationDeletion()">Delete & Archive</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History & Archives Drawer Modal -->
+    <div class="modal-overlay hidden" id="historyModalOverlay">
+        <div class="modal-card history-modal-card">
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <span class="modal-modality-badge">[ARCHIVES]</span>
+                    <h3>Conversation History & Export Files</h3>
+                </div>
+                <button class="close-modal-btn" onclick="closeHistoryModal()">&times;</button>
+            </div>
+            <div class="history-toolbar">
+                <div class="history-search-box">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="historySearchInput" placeholder="Search archived conversations by title or topic..." oninput="filterHistoryArchives()">
+                </div>
+                <button class="clear-all-history-btn" onclick="clearAllHistory()" title="Clear all archived history files">Clear All</button>
+            </div>
+            <div class="modal-body history-modal-body" id="historyArchivesList">
+                <!-- Dynamically loaded history archive cards -->
+            </div>
+        </div>
+    </div>
+
+    <!-- History Full Transcript & Citation Viewer Modal -->
+    <div class="modal-overlay hidden" id="historyViewerModalOverlay">
+        <div class="modal-card transcript-viewer-card">
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <span class="modal-modality-badge">[TRANSCRIPT]</span>
+                    <h3 id="transcriptViewerTitle">Archived Conversation Transcript</h3>
+                </div>
+                <div class="transcript-header-actions">
+                    <button class="export-chip-btn" id="downloadMdBtn" onclick="downloadActiveHistoryFile('md')">📥 Markdown (.md)</button>
+                    <button class="export-chip-btn" id="downloadJsonBtn" onclick="downloadActiveHistoryFile('json')">📥 JSON (.json)</button>
+                    <button class="close-modal-btn" onclick="closeHistoryViewerModal()">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body transcript-viewer-body" id="transcriptViewerBody">
+                <!-- Dynamically rendered transcript & proof citations -->
             </div>
         </div>
     </div>

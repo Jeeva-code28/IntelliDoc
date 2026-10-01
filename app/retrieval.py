@@ -46,6 +46,7 @@ class BM25Index:
     """
     Custom In-Memory BM25 Index with pre-computed IDF scores at build time.
     Parameters: k1=1.5, b=0.75.
+    Supports strict conversation-scoped indexing and search.
     """
 
     def __init__(self, k1: float = settings.BM25_K1, b: float = settings.BM25_B):
@@ -54,6 +55,7 @@ class BM25Index:
         self.chunk_ids: List[str] = []
         self.doc_tokens: List[List[str]] = []
         self.doc_lengths: List[int] = []
+        self.doc_conversations: List[Optional[str]] = []
         self.avg_doc_len: float = 0.0
         self.df: Dict[str, int] = {}
         self.idf: Dict[str, float] = {}
@@ -67,6 +69,7 @@ class BM25Index:
             tokens = self.tokenize(c.text)
             self.doc_tokens.append(tokens)
             self.doc_lengths.append(len(tokens))
+            self.doc_conversations.append(getattr(c, "conversation_id", None) or c.metadata.get("conversation_id"))
 
             unique_terms = set(tokens)
             for t in unique_terms:
@@ -79,15 +82,49 @@ class BM25Index:
             for term, freq in self.df.items():
                 self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
 
+    def delete_conversation(self, conversation_id: str):
+        if not self.chunk_ids or not conversation_id:
+            return
+        keep_indices = [
+            i for i, cid in enumerate(self.doc_conversations)
+            if cid != conversation_id
+        ]
+        if not keep_indices:
+            self.clear()
+            return
+
+        self.chunk_ids = [self.chunk_ids[i] for i in keep_indices]
+        self.doc_tokens = [self.doc_tokens[i] for i in keep_indices]
+        self.doc_lengths = [self.doc_lengths[i] for i in keep_indices]
+        self.doc_conversations = [self.doc_conversations[i] for i in keep_indices]
+
+        # Re-compute DF and IDF
+        self.df.clear()
+        self.idf.clear()
+        for tokens in self.doc_tokens:
+            for t in set(tokens):
+                self.df[t] = self.df.get(t, 0) + 1
+
+        total_docs = len(self.chunk_ids)
+        self.avg_doc_len = sum(self.doc_lengths) / total_docs if total_docs > 0 else 0.0
+        for term, freq in self.df.items():
+            self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+
     def clear(self):
         self.chunk_ids.clear()
         self.doc_tokens.clear()
         self.doc_lengths.clear()
+        self.doc_conversations.clear()
         self.avg_doc_len = 0.0
         self.df.clear()
         self.idf.clear()
 
-    def search(self, query: str, top_k: int = settings.TOP_K_SPARSE) -> List[Tuple[str, float]]:
+    def search(
+        self,
+        query: str,
+        top_k: int = settings.TOP_K_SPARSE,
+        conversation_id: Optional[str] = None
+    ) -> List[Tuple[str, float]]:
         total_docs = len(self.chunk_ids)
         if total_docs == 0:
             return []
@@ -96,32 +133,39 @@ class BM25Index:
         if not q_tokens:
             return []
 
-        scores = np.zeros(total_docs, dtype=np.float32)
+        # If conversation_id is provided, candidate docs are filtered strictly
+        if conversation_id is not None:
+            candidate_indices = [
+                i for i, cid in enumerate(self.doc_conversations)
+                if cid == conversation_id
+            ]
+        else:
+            candidate_indices = list(range(total_docs))
+        if not candidate_indices:
+            return []
+
+        scores = {}
 
         for q_term in q_tokens:
             if q_term not in self.idf:
                 continue
             idf_val = self.idf[q_term]
-            for doc_idx, tokens in enumerate(self.doc_tokens):
+            for doc_idx in candidate_indices:
+                tokens = self.doc_tokens[doc_idx]
                 tf = tokens.count(q_term)
                 if tf == 0:
                     continue
                 doc_len = self.doc_lengths[doc_idx]
                 numerator = tf * (self.k1 + 1.0)
                 denominator = tf + self.k1 * (1.0 - self.b + self.b * (doc_len / self.avg_doc_len))
-                scores[doc_idx] += idf_val * (numerator / denominator)
+                scores[doc_idx] = scores.get(doc_idx, 0.0) + idf_val * (numerator / denominator)
 
-        if total_docs <= top_k:
-            top_indices = np.argsort(scores)[::-1]
-        else:
-            partitioned = np.argpartition(scores, -top_k)[-top_k:]
-            top_indices = partitioned[np.argsort(scores[partitioned])[::-1]]
+        if not scores:
+            return []
 
-        results = []
-        for idx in top_indices:
-            if scores[idx] > 0:
-                results.append((self.chunk_ids[idx], float(scores[idx])))
-        return results
+        sorted_candidates = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+        return [(self.chunk_ids[idx], float(score)) for idx, score in sorted_candidates if score > 0]
+
 
 
 def rrf_fusion(

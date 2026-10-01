@@ -53,6 +53,7 @@ class Settings:
     UPLOADS_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent / "data" / "uploads")
     ASSETS_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent / "data" / "assets")
     DB_PATH: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent / "data" / "npn_database.db")
+    HISTORY_DIR: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent / "data" / "history")
 
     # Embedding Model Settings
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5")
@@ -97,6 +98,7 @@ class Settings:
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
         self.ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+        self.HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

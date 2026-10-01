@@ -22,6 +22,7 @@ class Chunk:
     text: str
     context_text: str
     
+    conversation_id: Optional[str] = None
     bbox: Optional[Tuple[float, float, float, float]] = None
     asset_path: Optional[str] = None
     temporal_start: Optional[float] = None
@@ -34,8 +35,11 @@ class Chunk:
 class DocumentResponse(BaseModel):
     id: str
     filename: str
+    file_type: str = "document"
+    page_count: int = 1
     status: str
     progress: float = 0.0
+    conversation_id: Optional[str] = None
     created_at: str = ""
     error: Optional[str] = None
 
@@ -45,6 +49,7 @@ class DocumentUploadResponse(BaseModel):
     filename: str
     status: str
     message: str
+    conversation_id: Optional[str] = None
 
 
 class QueryRequest(BaseModel):
@@ -94,7 +99,41 @@ class MessageResponse(BaseModel):
 class ConversationResponse(BaseModel):
     id: str
     created_at: str = ""
+    title: Optional[str] = None
     messages: List[MessageResponse] = []
+    documents: List[DocumentResponse] = []
+
+
+class ConversationItemResponse(BaseModel):
+    id: str
+    title: str
+    created_at: str = ""
+    document_count: int = 0
+    message_count: int = 0
+
+
+class HistoryArchiveItem(BaseModel):
+    id: str
+    conversation_id: str
+    title: str
+    created_at: str = ""
+    deleted_at: str = ""
+    message_count: int = 0
+    document_count: int = 0
+    transcript_summary: str = ""
+
+
+class HistoryArchiveDetail(BaseModel):
+    id: str
+    conversation_id: str
+    title: str
+    created_at: str = ""
+    deleted_at: str = ""
+    message_count: int = 0
+    document_count: int = 0
+    transcript_summary: str = ""
+    markdown_content: Optional[str] = None
+    json_data: Optional[Dict[str, Any]] = None
 
 
 # Aliases for backward compatibility
@@ -103,3 +142,5 @@ RAGResponse = QueryResponse
 Citation = CitationSource
 MessageSchema = MessageResponse
 ConversationSchema = ConversationResponse
+
+
