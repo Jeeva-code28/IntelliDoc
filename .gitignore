@@ -38,6 +38,7 @@ data/
 *.db-wal
 *.db-shm
 *.bin
+annual-report-2025-2026.pdf
 
 # Testing, Coverage & Profiling
 .pytest_cache/

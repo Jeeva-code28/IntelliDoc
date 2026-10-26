@@ -96,6 +96,12 @@ class DatabaseRepository:
                 json_file_path TEXT,
                 transcript_summary TEXT
             );
+
+            CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
+            CREATE INDEX IF NOT EXISTS idx_chunks_conversation_id ON chunks(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_documents_conversation_id ON documents(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_history_conversation_id ON history_archives(conversation_id);
             """)
 
             # Auto-migrations for existing databases
@@ -109,6 +115,13 @@ class DatabaseRepository:
                 pass
             try:
                 conn.execute("ALTER TABLE conversations ADD COLUMN title TEXT;")
+            except Exception:
+                pass
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_conversation_id ON chunks(conversation_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_conversation_id ON documents(conversation_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);")
             except Exception:
                 pass
 

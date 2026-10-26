@@ -55,9 +55,11 @@ async def upload_document_v2(
 
 @v2_router.post("/query", response_model=QueryResponse)
 def query_rag_v2(req: QueryRequest, x_tenant_id: str = Header("default_tenant")):
-    # 1. Semantic Cache check
+    # 1. Semantic Cache check with strict tenant, conversation, and document scope
     cache = get_semantic_cache()
-    cached_hit = cache.get(req.query)
+    doc_scope = ",".join(sorted(req.document_ids)) if req.document_ids else (req.document_id or "")
+    scope_key = f"{x_tenant_id}:{req.conversation_id or 'default'}:{doc_scope}"
+    cached_hit = cache.get(req.query, scope_key=scope_key)
     if cached_hit:
         return QueryResponse(
             answer=cached_hit["answer"],
@@ -71,7 +73,7 @@ def query_rag_v2(req: QueryRequest, x_tenant_id: str = Header("default_tenant"))
     rag = get_rag_service()
     res = rag.query(req)
     if "cannot answer" not in res.answer.lower():
-        cache.set(req.query, res.answer)
+        cache.set(req.query, res.answer, scope_key=scope_key)
     return res
 
 

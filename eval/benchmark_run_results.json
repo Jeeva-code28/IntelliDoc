@@ -1,0 +1,180 @@
+{
+  "system_info": {
+    "os": "Windows 10",
+    "python_version": "3.11.9",
+    "cpu_count": 12,
+    "embedding_model": "BAAI/bge-small-en-v1.5",
+    "embedding_dim": 384
+  },
+  "vector_store_scaling": {
+    "3000": {
+      "vector_count": 3000,
+      "dimension": 384,
+      "build_time_ms": 59.07910002861172,
+      "memory_mb": 0.0,
+      "bytes_per_vector": 1536.0,
+      "cold_latency_ms": 6.417900091037154,
+      "median_latency_ms": 3.52159992326051,
+      "p95_latency_ms": 4.2730000568553805,
+      "p99_latency_ms": 4.461688068695366,
+      "min_latency_ms": 3.2367000821977854,
+      "max_latency_ms": 4.534600069746375,
+      "exact_recall_p1": 100.0
+    },
+    "10000": {
+      "vector_count": 10000,
+      "dimension": 384,
+      "build_time_ms": 175.2174999564886,
+      "memory_mb": 0.0,
+      "bytes_per_vector": 1536.0,
+      "cold_latency_ms": 11.948599945753813,
+      "median_latency_ms": 10.524999932385981,
+      "p95_latency_ms": 12.225479981862007,
+      "p99_latency_ms": 12.642239998094738,
+      "min_latency_ms": 9.93719999678433,
+      "max_latency_ms": 12.689700000919402,
+      "exact_recall_p1": 100.0
+    },
+    "50000": {
+      "vector_count": 50000,
+      "dimension": 384,
+      "build_time_ms": 762.4287999933586,
+      "memory_mb": 0.0,
+      "bytes_per_vector": 1536.0,
+      "cold_latency_ms": 53.30519995186478,
+      "median_latency_ms": 35.78009991906583,
+      "p95_latency_ms": 39.683800004422665,
+      "p99_latency_ms": 42.382575999945395,
+      "min_latency_ms": 33.85469992645085,
+      "max_latency_ms": 43.35930000524968,
+      "exact_recall_p1": 100.0
+    }
+  },
+  "bm25_inverted_index": {
+    "3000": {
+      "chunk_count": 3000,
+      "build_time_ms": 65.17049996182323,
+      "cold_latency_ms": 5.2686999551951885,
+      "median_latency_ms": 4.695500014349818,
+      "p95_latency_ms": 6.349739991128445,
+      "p99_latency_ms": 7.174516050145029
+    },
+    "10000": {
+      "chunk_count": 10000,
+      "build_time_ms": 218.2594999903813,
+      "cold_latency_ms": 22.493300028145313,
+      "median_latency_ms": 16.81040006224066,
+      "p95_latency_ms": 22.943499987013634,
+      "p99_latency_ms": 24.945780071429905
+    }
+  },
+  "query_retrieval_timings": {
+    "query_embedding_ms": {
+      "cold_ms": 332.9710999969393,
+      "median_ms": 29.275150038301945,
+      "p95_ms": 35.11425000615418,
+      "p99_ms": 35.4914979939349,
+      "min_ms": 26.54590003658086,
+      "max_ms": 35.57599999476224
+    },
+    "vector_search_ms": {
+      "cold_ms": 3.420499968342483,
+      "median_ms": 2.5511999847367406,
+      "p95_ms": 4.086589993676171,
+      "p99_ms": 5.306161034386604,
+      "min_ms": 2.332099946215749,
+      "max_ms": 5.662500043399632
+    },
+    "bm25_search_ms": {
+      "cold_ms": 14.491899986751378,
+      "median_ms": 10.089549934491515,
+      "p95_ms": 14.18465501628816,
+      "p99_ms": 14.576271981932223,
+      "min_ms": 7.798600010573864,
+      "max_ms": 14.67369997408241
+    },
+    "rrf_fusion_ms": {
+      "cold_ms": 0.05789997521787882,
+      "median_ms": 0.034800032153725624,
+      "p95_ms": 0.046820007264614105,
+      "p99_ms": 0.05038803443312645,
+      "min_ms": 0.02619996666908264,
+      "max_ms": 0.05140004213899374
+    },
+    "intent_boost_ms": {
+      "cold_ms": 0.11570006608963013,
+      "median_ms": 0.07025001104921103,
+      "p95_ms": 0.08230494568124413,
+      "p99_ms": 0.08781297015957534,
+      "min_ms": 0.05959998816251755,
+      "max_ms": 0.08939998224377632
+    },
+    "rerank_ms": {
+      "cold_ms": 11563.741100020707,
+      "median_ms": 617.3995500430465,
+      "p95_ms": 761.1161300272215,
+      "p99_ms": 793.6759860091843,
+      "min_ms": 608.5205998970196,
+      "max_ms": 803.1133000040427
+    },
+    "total_retrieval_ms": {
+      "cold_ms": 11914.816900040023,
+      "median_ms": 658.6679499596357,
+      "p95_ms": 815.6744600099046,
+      "p99_ms": 847.2461660369299,
+      "min_ms": 647.877199924551,
+      "max_ms": 856.2773000448942
+    }
+  },
+  "ingestion_breakdown": [
+    {
+      "filename": "bench_94p.pdf",
+      "file_size_mb": 0.074188232421875,
+      "page_count": 93,
+      "chunk_count": 93,
+      "table_chunk_count": 0,
+      "prose_chunk_count": 93,
+      "font_profiling_ms": 13.177199987694621,
+      "parsing_and_chunking_ms": 252.15459999162704,
+      "embedding_ms": 2841.934399912134,
+      "persistence_ms": 13.29719997011125,
+      "integrity_check_ms": 7.5523999985307455,
+      "total_ingestion_seconds": 3.2098958999849856,
+      "memory_delta_mb": 0.0,
+      "pages_per_second": 368.82135008874764
+    },
+    {
+      "filename": "browser_test_summary.pdf",
+      "file_size_mb": 0.0011272430419921875,
+      "page_count": 1,
+      "chunk_count": 1,
+      "table_chunk_count": 0,
+      "prose_chunk_count": 1,
+      "font_profiling_ms": 2.19290005043149,
+      "parsing_and_chunking_ms": 17.343000043183565,
+      "embedding_ms": 47.318600001744926,
+      "persistence_ms": 8.263099938631058,
+      "integrity_check_ms": 9.21440008096397,
+      "total_ingestion_seconds": 0.12261450011283159,
+      "memory_delta_mb": 0.0,
+      "pages_per_second": 57.660150926023704
+    },
+    {
+      "filename": "1e3de9e9-363d-487e-98a6-990eb4333dbe_Q226+Mgt+Report.pdf",
+      "file_size_mb": 0.44039154052734375,
+      "page_count": 12,
+      "chunk_count": 47,
+      "table_chunk_count": 8,
+      "prose_chunk_count": 15,
+      "font_profiling_ms": 75.59640007093549,
+      "parsing_and_chunking_ms": 4078.1353000784293,
+      "embedding_ms": 8208.924300037324,
+      "persistence_ms": 10.99350000731647,
+      "integrity_check_ms": 8.8363999966532,
+      "total_ingestion_seconds": 12.448631900013424,
+      "memory_delta_mb": 0.0,
+      "pages_per_second": 2.9425213037363473
+    }
+  ],
+  "timestamp": "2026-10-25T18:33:06Z"
+}

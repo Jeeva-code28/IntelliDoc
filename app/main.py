@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Depends, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -48,15 +48,21 @@ app.add_middleware(
 app.include_router(v1_router)
 app.include_router(v2_router)
 
-# Create static directory if missing
-static_dir = Path("static")
-static_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Mount assets directory for previews
+# Assets directory and endpoint for media/figure previews
 assets_dir = settings.ASSETS_DIR
 assets_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+@app.get("/assets/{asset_path:path}")
+def serve_asset_file(asset_path: str):
+    direct = (assets_dir / asset_path).resolve()
+    if direct.is_file() and str(direct).startswith(str(assets_dir.resolve())):
+        return FileResponse(str(direct))
+    # Fallback to search by filename in asset subdirectories
+    fname = Path(asset_path).name
+    matches = list(assets_dir.rglob(fname))
+    if matches and matches[0].is_file():
+        return FileResponse(str(matches[0]))
+    raise HTTPException(status_code=404, detail="Asset not found")
 
 
 @app.on_event("startup")
@@ -65,12 +71,10 @@ def startup_event():
     rag.initialize_indexes()
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", include_in_schema=False)
 def read_root():
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return index_file.read_text(encoding="utf-8")
-    return "<h1>Project NPN Active</h1>"
+    """Redirect to the React frontend running on port 5173."""
+    return RedirectResponse(url="http://localhost:5173")
 
 
 @app.get("/health")

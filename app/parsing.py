@@ -81,7 +81,8 @@ def extract_tables_from_page(
     doc_id: str,
     filename: str,
     page_num: int,
-    current_section: Optional[str]
+    current_section: Optional[str],
+    text_dict: Optional[Dict[str, Any]] = None
 ) -> List[Chunk]:
     chunks = []
     try:
@@ -89,7 +90,7 @@ def extract_tables_from_page(
         if not tabs or not tabs.tables:
             return chunks
 
-        text_page = page.get_text("dict")
+        text_page = text_dict if text_dict is not None else page.get_text("dict")
         page_lines_text = []
         for block in text_page.get("blocks", []):
             if block.get("type") == 0:
@@ -243,7 +244,7 @@ def sandbox_extract_zip_attachment(zip_path: Path, doc_id: str) -> Tuple[bool, L
     return is_quarantined, quarantined_files
 
 
-def parse_pdf_document(pdf_path: str, doc_id: str) -> List[Chunk]:
+def parse_pdf_document(pdf_path: str, doc_id: str, original_filename: Optional[str] = None) -> List[Chunk]:
     """
     Complete Multimodal Ingestion Pipeline:
     - Font profiling (modal size detection)
@@ -253,7 +254,9 @@ def parse_pdf_document(pdf_path: str, doc_id: str) -> List[Chunk]:
     - Embedded attachments (video keyframe scenes, audio transcript windows, image diagrams, tabular CSVs, ZIP sandbox)
     """
     path_obj = Path(pdf_path)
-    filename = path_obj.name
+    clean_name = original_filename or path_obj.name
+    clean_name = re.sub(r"^[0-9a-fA-F-]{36}_", "", clean_name)
+    filename = clean_name
     doc = fitz.open(pdf_path)
 
     modal_font_size = profile_document_fonts(doc, sample_pages=settings.FONT_PROFILING_PAGES)
@@ -297,7 +300,7 @@ def parse_pdf_document(pdf_path: str, doc_id: str) -> List[Chunk]:
 
         # Table Extraction
         if page_probably_has_table(page, spans_info):
-            table_chunks = extract_tables_from_page(page, doc_id, filename, page_num, section)
+            table_chunks = extract_tables_from_page(page, doc_id, filename, page_num, section, text_dict=text_dict)
             all_chunks.extend(table_chunks)
 
         # Prose Extraction
@@ -325,7 +328,7 @@ def parse_pdf_document(pdf_path: str, doc_id: str) -> List[Chunk]:
                         continue
                     body_text = " ".join(chunk_words)
                     
-                    context_text = f"Document: {filename} | Page {page_num} | Section: {section}\n\n{body_text}"
+                    context_text = f"Page {page_num} | Section: {section}\n\n{body_text}"
                     search_text = f"{section}. {body_text}"
 
                     chunk_bbox = (min_x0, min_y0, max_x1, max_y1) if min_x0 < 1e5 else None
@@ -355,13 +358,20 @@ def parse_pdf_document(pdf_path: str, doc_id: str) -> List[Chunk]:
                 base_image = doc.extract_image(xref)
                 image_bytes = base_image["image"]
                 image_ext = base_image["ext"]
+                width = base_image.get("width", 0)
+                height = base_image.get("height", 0)
+
+                # Filter out small decorative icons, spacers, bullets, and borders (<500 bytes or <50x50 px)
+                if len(image_bytes) < 500 or (width > 0 and width < 50) or (height > 0 and height < 50):
+                    continue
+
                 asset_filename = f"page_{page_num}_fig_{img_idx+1}.{image_ext}"
                 asset_path = doc_asset_dir / asset_filename
                 
                 with open(asset_path, "wb") as f:
                     f.write(image_bytes)
 
-                caption = multimedia.caption_image(str(asset_path), section)
+                caption = f"Embedded visual figure '{asset_filename}' on page {page_num} under section '{section}'."
 
                 fig_chunk = Chunk(
                     id=str(uuid.uuid4()),
@@ -370,13 +380,13 @@ def parse_pdf_document(pdf_path: str, doc_id: str) -> List[Chunk]:
                     page_number=page_num,
                     section=section,
                     content_type="figure",
-                    text=f"[Figure] Page {page_num} under section '{section}': {caption}",
-                    context_text=f"Figure extracted from Page {page_num} under section: {section}.\nDescription: {caption}\nAsset file: {asset_path.name}",
+                    text=f"[Figure] Page {page_num} under section '{section}': Embedded image asset {asset_filename}.",
+                    context_text=f"Figure: {asset_filename} on Page {page_num} under section '{section}'. (Image asset preserved; visual content uninterpreted).",
                     bbox=(50.0, 100.0, 450.0, 350.0),
                     asset_path=str(asset_path),
                     temporal_start=None,
                     temporal_end=None,
-                    metadata={"ext": image_ext, "xref": xref, "caption": caption}
+                    metadata={"ext": image_ext, "xref": xref, "caption": caption, "description_verified": False}
                 )
                 all_chunks.append(fig_chunk)
             except Exception as e:

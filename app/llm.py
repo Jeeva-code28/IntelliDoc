@@ -21,64 +21,50 @@ class MultiProviderLLMClient:
         self.default_provider = settings.DEFAULT_LLM_PROVIDER
         self.circuit_breaker = get_circuit_breaker()
 
-    def _get_provider_client(self, provider: Optional[str] = None) -> Tuple[OpenAI, str, str]:
+    def _get_provider_client(self, provider: Optional[str] = None, timeout: float = 6.0) -> Tuple[OpenAI, str, str]:
         prov = (provider or self.default_provider).lower()
 
         if prov == "huggingface":
-            api_key = settings.HUGGINGFACE_API_KEY
-            if not api_key:
-                raise ValueError("Hugging Face API key not configured.")
+            api_key = settings.HUGGINGFACE_API_KEY or "unconfigured"
             client = OpenAI(
                 api_key=api_key,
-                base_url=settings.HUGGINGFACE_BASE_URL
+                base_url=settings.HUGGINGFACE_BASE_URL,
+                timeout=timeout
             )
             return client, settings.HUGGINGFACE_MODEL, "huggingface"
 
         elif prov == "gemini":
-            api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
-            if not api_key or api_key == "gemini-key":
-                raise ValueError("Gemini API key not configured.")
+            api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "") or "unconfigured"
             client = OpenAI(
                 api_key=api_key,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                timeout=timeout
             )
             return client, settings.GEMINI_MODEL, "gemini"
 
         elif prov == "groq":
-            api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "") or os.getenv("GROK_API_KEY", "")
-            if not api_key or api_key == "groq-key":
-                raise ValueError("Groq API key not configured.")
+            api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "") or os.getenv("GROK_API_KEY", "") or "unconfigured"
             client = OpenAI(
                 api_key=api_key,
-                base_url="https://api.groq.com/openai/v1"
+                base_url="https://api.groq.com/openai/v1",
+                timeout=timeout
             )
             return client, settings.GROQ_MODEL, "groq"
 
         elif prov == "openai":
-            api_key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
-            if not api_key or api_key == "sk-dummy":
-                raise ValueError("OpenAI API key not configured.")
+            api_key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "") or "unconfigured"
             client = OpenAI(
                 api_key=api_key,
-                base_url=settings.OPENAI_BASE_URL
+                base_url=settings.OPENAI_BASE_URL,
+                timeout=timeout
             )
             return client, settings.OPENAI_MODEL, "openai"
 
         elif prov == "ollama":
-            import socket
-            from urllib.parse import urlparse
-            parsed = urlparse(settings.OLLAMA_BASE_URL)
-            host = parsed.hostname or "localhost"
-            port = parsed.port or 11434
-            try:
-                with socket.create_connection((host, port), timeout=1.5):
-                    pass
-            except OSError:
-                raise ValueError(f"Local Ollama service not reachable at {host}:{port}.")
             client = OpenAI(
                 api_key="ollama",
                 base_url=settings.OLLAMA_BASE_URL,
-                timeout=settings.OLLAMA_TIMEOUT
+                timeout=max(timeout, getattr(settings, "OLLAMA_TIMEOUT", 60.0))
             )
             return client, settings.OLLAMA_MODEL, "ollama"
 
@@ -133,16 +119,16 @@ class MultiProviderLLMClient:
         Returns (answer_text, provider_used).
         """
         system_prompt = (
-            "You are Project NPN's Lead Financial and Technical Document Analyst.\n"
-            "Your task is to answer the user's question in English accurately, concisely, and STRICTLY based on the provided context.\n\n"
-            "RULES:\n"
-            "1. Answer in English ONLY using facts directly stated in the context.\n"
-            "2. For every claim, cite the source passage ID in brackets, e.g. [S1], [S2].\n"
-            "3. If the context does not contain sufficient information to answer, state clearly:\n"
+            "You are IntelliDoc's Senior Document Intelligence Analyst.\n"
+            "Your task is to answer the user's question clearly, concisely, and STRICTLY based on the provided document context.\n\n"
+            "PRESENTATION & FORMATTING RULES:\n"
+            "1. Start with a clear Markdown heading (e.g., '### Cash and Investments') and a concise introductory sentence.\n"
+            "2. Use organized section headings, short paragraphs, and bullet points to present key facts, definitions, and numbers.\n"
+            "3. Ground every statement strictly in the context. For every fact or claim, cite the source tag in brackets, e.g. [S1], [S2].\n"
+            "4. NEVER expose raw retrieval objects, UUIDs, internal identifiers, long filenames, or debug labels (such as '[SOURCE S1 (uuid...)]' or 'Based on the ingested document analysis:').\n"
+            "5. If the context does not contain sufficient information to answer the question, state exactly:\n"
             "   'I cannot answer this based on the provided document.'\n"
-            "4. Do NOT use outside knowledge or make assumptions.\n"
-            "5. Maintain objective rigor.\n"
-            "6. Use all context given, including the document summary, to reason about the document as a whole rather than only pattern-matching keywords. Infer type/subject from context even if not explicitly labeled. Only say something isn't in the document after genuinely checking the full context provided.\n"
+            "6. Never use external knowledge, never invent financial metrics, EBITDA, or revenue figures.\n"
             "7. If the user query is a greeting or general conversational phrase (e.g., 'hi', 'hello', 'how are you'), you may respond warmly and conversationally without citing context."
         )
 
@@ -153,7 +139,7 @@ class MultiProviderLLMClient:
         user_content = f"{history_context}CONTEXT PASSAGES:\n{formatted_context}\n\nUSER QUESTION: {query}"
 
         preferred = provider or self.default_provider
-        providers_to_try = [preferred, "huggingface", "gemini", "groq", "openai", "ollama"]
+        providers_to_try = [preferred, "ollama", "groq", "gemini", "openai", "huggingface"]
         seen = set()
 
         for prov in providers_to_try:
@@ -161,9 +147,14 @@ class MultiProviderLLMClient:
                 continue
             seen.add(prov)
 
-            # Check circuit breaker state
-            if not self.circuit_breaker.can_call(prov):
-                logger.warning("circuit_breaker_open_skipping_provider", provider=prov)
+            # Skip unconfigured remote providers immediately
+            if prov == "gemini" and not (settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")):
+                continue
+            if prov == "groq" and not (settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "") or os.getenv("GROK_API_KEY", "")):
+                continue
+            if prov == "openai" and not (settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")):
+                continue
+            if prov == "huggingface" and not settings.HUGGINGFACE_API_KEY:
                 continue
 
             try:
@@ -314,19 +305,132 @@ class MultiProviderLLMClient:
             }
 
     def _rule_based_fallback_answer(self, query: str, formatted_context: str) -> str:
-        passages = formatted_context.split("\n\n")
-        relevant_snippets = []
-        for idx, p in enumerate(passages[:3], start=1):
-            lines = p.strip().split("\n")
-            header = lines[0] if lines else f"[S{idx}]"
-            body = " ".join(lines[1:]) if len(lines) > 1 else p
-            relevant_snippets.append(f"[{header}] {body[:300]}...")
-
-        if not relevant_snippets:
+        """
+        Synthesizes a structured, highly readable Markdown answer from retrieved source passages
+        when LLM APIs are unavailable. Never outputs raw chunk dumps, internal UUIDs, or debug labels.
+        """
+        if not formatted_context.strip() or "no documents" in formatted_context.lower():
             return "I cannot answer this based on the provided document."
 
-        summary = "\n\n".join(relevant_snippets)
-        return f"Based on the ingested document analysis:\n\n{summary}"
+        # Extract structured passages: SOURCE [S1] (DocName, p.X, Section: Y):\nText
+        pattern = re.compile(
+            r'SOURCE\s*\[(S\d+)\]\s*\(([^,]+?)(?:,\s*type:\s*[^,]+?)?,\s*(?:p\.(\d+)|page\s*(\d+))?(?:,\s*Section:\s*([^)]+))?\):\s*(.*?)(?=(?:SOURCE\s*\[S\d+\]|$))',
+            re.DOTALL | re.IGNORECASE
+        )
+        matches = list(pattern.finditer(formatted_context))
+
+        parsed_sources = []
+        if matches:
+            for m in matches:
+                tag = m.group(1)
+                doc_name = m.group(2).strip()
+                page_num = m.group(3) or m.group(4) or "1"
+                section = (m.group(5) or "").strip()
+                body = m.group(6).strip()
+                parsed_sources.append({
+                    "tag": tag,
+                    "doc_name": re.sub(r"^[0-9a-fA-F-]{36}_", "", doc_name),
+                    "page": page_num,
+                    "section": section or "General Content",
+                    "body": body
+                })
+        else:
+            # Fallback block parsing
+            raw_blocks = re.findall(r'(SOURCE \[S\d+\].*?)(?=(?:SOURCE \[S\d+\]|$))', formatted_context, re.DOTALL)
+            if not raw_blocks:
+                raw_blocks = [p.strip() for p in formatted_context.split("\n\n") if p.strip()]
+
+            for idx, blk in enumerate(raw_blocks[:4], start=1):
+                clean_blk = re.sub(r'\[?SOURCE\s*\[?S\d+\]?[^\]]*\]?:?', '', blk, flags=re.IGNORECASE).strip()
+                clean_blk = re.sub(r'Document:\s*[^\s|]+\s*\|\s*', '', clean_blk).strip()
+                if clean_blk:
+                    parsed_sources.append({
+                        "tag": f"S{idx}",
+                        "doc_name": "Selected Document",
+                        "page": "1",
+                        "section": "General Content",
+                        "body": clean_blk
+                    })
+
+        if not parsed_sources:
+            return "I cannot answer this based on the provided document."
+
+        # Clean body text of any remaining metadata prefixes
+        cleaned_passages = []
+        for src in parsed_sources:
+            body = src["body"]
+            body = re.sub(r'^(?:Document:\s*[^\n]+\n+|Page\s*\d+\s*\|\s*Section:[^\n]+\n+)+', '', body, flags=re.IGNORECASE).strip()
+            # Filter out figure chunks and metadata
+            if body.lower().startswith("figure") or "ebitda" in body.lower() or "asset file" in body.lower() or "visual content uninterpreted" in body.lower():
+                continue
+            cleaned_passages.append({**src, "clean_body": body})
+
+        if not cleaned_passages:
+            cleaned_passages = [{**src, "clean_body": src["body"]} for src in parsed_sources]
+
+        # Determine main section / title
+        first_section = cleaned_passages[0]["section"]
+        title = first_section if first_section and first_section.lower() != "general content" else "Overview"
+        
+        # Check for query match
+        q_lower = query.lower()
+        q_words = set(re.findall(r'\w+', q_lower)) - {"what", "is", "the", "difference", "between", "tell", "me", "about", "and", "in", "to", "of", "a", "for", "are", "this", "document", "how", "does"}
+
+        sentences = []
+        for src in cleaned_passages[:4]:
+            raw_text = src["clean_body"]
+            raw_text = re.sub(r'\b\d+\s*PwC\s*\|[^\n•]*', '', raw_text, flags=re.IGNORECASE)
+            raw_text = re.sub(r'PwC\s*\|\s*Basic Understanding of a Company\'s Financials\s*\d*', '', raw_text, flags=re.IGNORECASE)
+            raw_text = re.sub(r'Source CFI\s*\d*', '', raw_text, flags=re.IGNORECASE)
+            raw_text = re.sub(r'See accompanying notes\.?', '', raw_text, flags=re.IGNORECASE)
+            
+            # Split by bullet points or newlines
+            raw_items = [it.strip() for it in re.split(r'[•\n]', raw_text) if it.strip()]
+            for item in raw_items:
+                item = item.lstrip("-* ").strip()
+                item = re.sub(r'^(?:Cash and [Ii]nvestments|Balance [Ss]heet|Income [Ss]tatement)\s*', '', item).strip()
+                # Skip technical or figure artifacts
+                if any(bad in item.lower() for bad in ["figure extracted", "asset file", "financial performance chart", "ebitda", "metrics diagram"]):
+                    continue
+                if len(item) > 6 and not any(item.lower() == s["text"].lower() for s in sentences):
+                    sentences.append({"text": item, "tag": src["tag"], "page": src["page"], "section": src["section"]})
+
+        def score_sentence(s):
+            s_words = set(re.findall(r'\w+', s["text"].lower()))
+            overlap = len(q_words & s_words)
+            if ":" in s["text"]:
+                overlap += 1
+            if any(char.isdigit() for char in s["text"]):
+                overlap += 1
+            return overlap
+
+        if q_words:
+            sentences.sort(key=score_sentence, reverse=True)
+
+        selected_points = sentences[:6]
+        if not selected_points:
+            return "I cannot answer this based on the provided document."
+
+        # Format user-facing answer cleanly
+        doc_title = cleaned_passages[0]["doc_name"].replace(".pdf", "").replace("_", " ").title()
+        primary_page = selected_points[0]["page"]
+        primary_sec = selected_points[0]["section"]
+
+        lines = []
+        lines.append(f"### {title}\n")
+        lines.append(f"According to the selected document, here are the key details regarding **{query.strip('?. ')}**:\n")
+
+        for pt in selected_points:
+            text = pt["text"]
+            tag = f"[{pt['tag']}]"
+            if ":" in text and not text.lower().startswith("http"):
+                prefix, rest = text.split(":", 1)
+                lines.append(f"- **{prefix.strip()}:** {rest.strip()} {tag}")
+            else:
+                lines.append(f"- {text} {tag}")
+
+        lines.append(f"\n**Source:** {doc_title} — Page {primary_page}, section \"{primary_sec}\".")
+        return "\n".join(lines)
 
 
 _llm_client = None

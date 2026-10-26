@@ -9,8 +9,10 @@ function ParticleField(props) {
   const sphere = random.inSphere(new Float32Array(2000 * 3), { radius: 1.5 });
 
   useFrame((state, delta) => {
-    ref.current.rotation.x -= delta / 20;
-    ref.current.rotation.y -= delta / 30;
+    if (ref.current) {
+      ref.current.rotation.x -= delta / 25;
+      ref.current.rotation.y -= delta / 35;
+    }
   });
 
   return (
@@ -18,11 +20,11 @@ function ParticleField(props) {
       <Points ref={ref} positions={sphere} stride={3} frustumCulled={false} {...props}>
         <PointMaterial
           transparent
-          color="#4F46E5"
-          size={0.005}
+          color="#F15A24"
+          size={0.004}
           sizeAttenuation={true}
           depthWrite={false}
-          opacity={0.6}
+          opacity={0.35}
         />
       </Points>
     </group>
@@ -31,7 +33,7 @@ function ParticleField(props) {
 
 export default function Hero3DBackground() {
   return (
-    <div className="absolute inset-0 z-0 bg-[var(--color-bg-main)]">
+    <div className="absolute inset-0 z-0 bg-[#090909] pointer-events-none opacity-40">
       <Canvas camera={{ position: [0, 0, 1] }}>
         <ParticleField />
       </Canvas>

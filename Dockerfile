@@ -32,7 +32,6 @@ COPY --from=builder /root/.cache /root/.cache
 
 # Copy application source code
 COPY app/ ./app/
-COPY static/ ./static/
 COPY tests/ ./tests/
 COPY README.md .
 

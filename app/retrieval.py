@@ -44,9 +44,9 @@ def calculate_term_coverage(query: str, chunk_text: str) -> float:
 
 class BM25Index:
     """
-    Custom In-Memory BM25 Index with pre-computed IDF scores at build time.
+    Custom In-Memory BM25 Index with inverted index posting lists and pre-computed IDF scores.
     Parameters: k1=1.5, b=0.75.
-    Supports strict conversation-scoped indexing and search.
+    Supports strict conversation-scoped indexing and search in O(|Q| * postings) time.
     """
 
     def __init__(self, k1: float = settings.BM25_K1, b: float = settings.BM25_B):
@@ -56,24 +56,37 @@ class BM25Index:
         self.doc_tokens: List[List[str]] = []
         self.doc_lengths: List[int] = []
         self.doc_conversations: List[Optional[str]] = []
+        self.doc_document_ids: List[str] = []
+        self.doc_index_map: Dict[str, List[int]] = {}
         self.avg_doc_len: float = 0.0
         self.df: Dict[str, int] = {}
         self.idf: Dict[str, float] = {}
+        self.inverted_index: Dict[str, Dict[int, int]] = {}  # term -> {doc_idx: tf}
 
     def tokenize(self, text: str) -> List[str]:
         return [w for w in re.findall(r'\b[a-zA-Z0-9_:-]+\b', text.lower()) if w not in STOPWORDS]
 
     def add_chunks(self, chunks: List[Chunk]):
         for c in chunks:
+            doc_idx = len(self.chunk_ids)
             self.chunk_ids.append(c.id)
             tokens = self.tokenize(c.text)
             self.doc_tokens.append(tokens)
             self.doc_lengths.append(len(tokens))
             self.doc_conversations.append(getattr(c, "conversation_id", None) or c.metadata.get("conversation_id"))
+            self.doc_document_ids.append(c.document_id)
+            self.doc_index_map.setdefault(c.document_id, []).append(doc_idx)
 
-            unique_terms = set(tokens)
-            for t in unique_terms:
+            # Build term frequency map for this document
+            tf_map: Dict[str, int] = {}
+            for t in tokens:
+                tf_map[t] = tf_map.get(t, 0) + 1
+
+            for t, tf in tf_map.items():
                 self.df[t] = self.df.get(t, 0) + 1
+                if t not in self.inverted_index:
+                    self.inverted_index[t] = {}
+                self.inverted_index[t][doc_idx] = tf
 
         total_docs = len(self.chunk_ids)
         if total_docs > 0:
@@ -81,6 +94,49 @@ class BM25Index:
             # Pre-compute IDF scores at index build time (Hot-path optimization)
             for term, freq in self.df.items():
                 self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+
+    def _rebuild_index(self):
+        self.df.clear()
+        self.idf.clear()
+        self.inverted_index.clear()
+        self.doc_index_map.clear()
+
+        for doc_idx, did in enumerate(self.doc_document_ids):
+            self.doc_index_map.setdefault(did, []).append(doc_idx)
+
+        for doc_idx, tokens in enumerate(self.doc_tokens):
+            tf_map: Dict[str, int] = {}
+            for t in tokens:
+                tf_map[t] = tf_map.get(t, 0) + 1
+
+            for t, tf in tf_map.items():
+                self.df[t] = self.df.get(t, 0) + 1
+                if t not in self.inverted_index:
+                    self.inverted_index[t] = {}
+                self.inverted_index[t][doc_idx] = tf
+
+        total_docs = len(self.chunk_ids)
+        self.avg_doc_len = sum(self.doc_lengths) / total_docs if total_docs > 0 else 0.0
+        for term, freq in self.df.items():
+            self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+
+    def delete_document(self, document_id: str):
+        if not self.chunk_ids or not document_id:
+            return
+        keep_indices = [
+            i for i, did in enumerate(self.doc_document_ids)
+            if did != document_id
+        ]
+        if not keep_indices:
+            self.clear()
+            return
+
+        self.chunk_ids = [self.chunk_ids[i] for i in keep_indices]
+        self.doc_tokens = [self.doc_tokens[i] for i in keep_indices]
+        self.doc_lengths = [self.doc_lengths[i] for i in keep_indices]
+        self.doc_conversations = [self.doc_conversations[i] for i in keep_indices]
+        self.doc_document_ids = [self.doc_document_ids[i] for i in keep_indices]
+        self._rebuild_index()
 
     def delete_conversation(self, conversation_id: str):
         if not self.chunk_ids or not conversation_id:
@@ -97,18 +153,8 @@ class BM25Index:
         self.doc_tokens = [self.doc_tokens[i] for i in keep_indices]
         self.doc_lengths = [self.doc_lengths[i] for i in keep_indices]
         self.doc_conversations = [self.doc_conversations[i] for i in keep_indices]
-
-        # Re-compute DF and IDF
-        self.df.clear()
-        self.idf.clear()
-        for tokens in self.doc_tokens:
-            for t in set(tokens):
-                self.df[t] = self.df.get(t, 0) + 1
-
-        total_docs = len(self.chunk_ids)
-        self.avg_doc_len = sum(self.doc_lengths) / total_docs if total_docs > 0 else 0.0
-        for term, freq in self.df.items():
-            self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+        self.doc_document_ids = [self.doc_document_ids[i] for i in keep_indices]
+        self._rebuild_index()
 
     def delete_chunks(self, chunk_ids_to_remove: set):
         if not self.chunk_ids or not chunk_ids_to_remove:
@@ -125,33 +171,27 @@ class BM25Index:
         self.doc_tokens = [self.doc_tokens[i] for i in keep_indices]
         self.doc_lengths = [self.doc_lengths[i] for i in keep_indices]
         self.doc_conversations = [self.doc_conversations[i] for i in keep_indices]
-
-        # Re-compute DF and IDF
-        self.df.clear()
-        self.idf.clear()
-        for tokens in self.doc_tokens:
-            for t in set(tokens):
-                self.df[t] = self.df.get(t, 0) + 1
-
-        total_docs = len(self.chunk_ids)
-        self.avg_doc_len = sum(self.doc_lengths) / total_docs if total_docs > 0 else 0.0
-        for term, freq in self.df.items():
-            self.idf[term] = math.log((total_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+        self.doc_document_ids = [self.doc_document_ids[i] for i in keep_indices]
+        self._rebuild_index()
 
     def clear(self):
         self.chunk_ids.clear()
         self.doc_tokens.clear()
         self.doc_lengths.clear()
         self.doc_conversations.clear()
+        self.doc_document_ids.clear()
+        self.doc_index_map.clear()
         self.avg_doc_len = 0.0
         self.df.clear()
         self.idf.clear()
+        self.inverted_index.clear()
 
     def search(
         self,
         query: str,
         top_k: int = settings.TOP_K_SPARSE,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        document_ids: Optional[List[str]] = None
     ) -> List[Tuple[str, float]]:
         total_docs = len(self.chunk_ids)
         if total_docs == 0:
@@ -161,27 +201,47 @@ class BM25Index:
         if not q_tokens:
             return []
 
-        # If conversation_id is provided, candidate docs are filtered strictly
-        if conversation_id is not None:
+        # Candidate doc filtering strictly by document_ids and/or conversation_id
+        candidate_set: Optional[Set[int]] = None
+        if document_ids is not None:
+            doc_set = set(document_ids)
+            collected_indices: List[int] = []
+            for did in doc_set:
+                indices = self.doc_index_map.get(did)
+                if indices:
+                    collected_indices.extend(indices)
+
+            if conversation_id is not None:
+                candidate_indices = [
+                    idx for idx in collected_indices
+                    if self.doc_conversations[idx] == conversation_id
+                ]
+            else:
+                candidate_indices = collected_indices
+
+            if not candidate_indices:
+                return []
+            candidate_set = set(candidate_indices)
+
+        elif conversation_id is not None:
             candidate_indices = [
                 i for i, cid in enumerate(self.doc_conversations)
                 if cid == conversation_id
             ]
-        else:
-            candidate_indices = list(range(total_docs))
-        if not candidate_indices:
-            return []
+            if not candidate_indices:
+                return []
+            candidate_set = set(candidate_indices)
 
-        scores = {}
+        scores: Dict[int, float] = {}
 
         for q_term in q_tokens:
-            if q_term not in self.idf:
+            if q_term not in self.idf or q_term not in self.inverted_index:
                 continue
             idf_val = self.idf[q_term]
-            for doc_idx in candidate_indices:
-                tokens = self.doc_tokens[doc_idx]
-                tf = tokens.count(q_term)
-                if tf == 0:
+            postings = self.inverted_index[q_term]
+
+            for doc_idx, tf in postings.items():
+                if candidate_set is not None and doc_idx not in candidate_set:
                     continue
                 doc_len = self.doc_lengths[doc_idx]
                 numerator = tf * (self.k1 + 1.0)

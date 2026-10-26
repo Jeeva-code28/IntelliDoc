@@ -56,17 +56,23 @@ class DocumentUploadResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     conversation_id: Optional[str] = None
+    document_ids: Optional[List[str]] = None
+    document_id: Optional[str] = None
     llm_provider: Optional[str] = None
     skip_verification: bool = True
 
 
 class CitationSource(BaseModel):
     chunk_id: str
+    document_id: Optional[str] = None
+    document_name: Optional[str] = None
     filename: str
     page_number: int
     section: Optional[str] = None
+    section_heading: Optional[str] = None
     content_type: str
     snippet: str
+    excerpt: Optional[str] = None
     score: float
     bbox: Optional[Tuple[float, float, float, float]] = None
     asset_path: Optional[str] = None
@@ -82,9 +88,11 @@ class VerificationBadge(BaseModel):
 
 
 class QueryResponse(BaseModel):
+    status: str = "answered"
     answer: str
     citations: List[CitationSource] = []
     verification: Optional[VerificationBadge] = None
+    evidence_sufficient: bool = True
     latency_ms: float
     retrieval_latency_ms: float
     conversation_id: str

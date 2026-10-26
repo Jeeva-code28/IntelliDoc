@@ -204,7 +204,7 @@ export default function ChatWindow({ defaultOpen = false }) {
   // Markdown rendering components for clean typography
   const MarkdownComponents = {
     p: ({ node, ...props }) => <p className="mb-2 leading-relaxed" {...props} />,
-    a: ({ node, ...props }) => <a className="text-[var(--color-accent-indigo)] hover:underline" {...props} />,
+    a: ({ node, ...props }) => <a className="text-[var(--color-accent-orange)] hover:underline" {...props} />,
     ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
     ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
     li: ({ node, ...props }) => <li className="pl-1" {...props} />,
@@ -222,16 +222,16 @@ export default function ChatWindow({ defaultOpen = false }) {
     <>
       <style>{`
         .chat-theme-override {
-          --color-bg-main: #040710;
-          --color-bg-surface: #0C1424;
-          --color-bg-elevated: #122D59;
-          --color-border: #2C6CA4;
-          --color-border-highlight: #3C87D1;
-          --color-accent-indigo: #EB5D22;
-          --color-accent-indigo-hover: #CB4711;
-          --color-text-primary: #F2F1F1;
-          --color-text-secondary: #ADC0CF;
-          --color-text-muted: #ADC0CF;
+          --color-bg-main: #090909;
+          --color-bg-surface: #171717;
+          --color-bg-elevated: #202020;
+          --color-border: #2B2B2B;
+          --color-border-highlight: #3D3D3D;
+          --color-accent-orange: #F15A24;
+          --color-accent-orange-hover: #FF6A35;
+          --color-text-primary: #F5F1EC;
+          --color-text-secondary: #A3A3A3;
+          --color-text-muted: #737373;
         }
       `}</style>
       <AnimatePresence>
@@ -243,7 +243,7 @@ export default function ChatWindow({ defaultOpen = false }) {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={toggleWidget}
-            className="chat-theme-override fixed bottom-6 right-6 w-14 h-14 bg-[var(--color-accent-indigo)] hover:bg-[var(--color-accent-indigo-hover)] rounded-2xl flex items-center justify-center text-[#F2F1F1] z-50 cursor-pointer border-none outline-none shadow-lg"
+            className="chat-theme-override fixed bottom-6 right-6 w-14 h-14 bg-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange-hover)] rounded-2xl flex items-center justify-center text-[#F5F1EC] z-50 cursor-pointer border-none outline-none shadow-lg"
           >
             <MessageSquare size={24} />
           </motion.button>
@@ -257,7 +257,7 @@ export default function ChatWindow({ defaultOpen = false }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
               onClick={toggleWidget}
             />
 
@@ -272,10 +272,10 @@ export default function ChatWindow({ defaultOpen = false }) {
               <header className="flex flex-col bg-[var(--color-bg-surface)] border-b border-[var(--color-border)] p-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--color-accent-indigo)] flex items-center justify-center font-bold text-[#F2F1F1] text-xs tracking-wider">
-                      NPN
+                    <div className="w-8 h-8 rounded-lg bg-[var(--color-accent-orange)] flex items-center justify-center font-bold text-[#F5F1EC] text-xs tracking-wider">
+                      ID
                     </div>
-                    <h3 className="font-semibold text-[#F2F1F1] text-sm m-0">Project NPN</h3>
+                    <h3 className="font-semibold text-[#F5F1EC] text-sm m-0">IntelliDoc</h3>
                   </div>
                   <button onClick={toggleWidget} className="text-[var(--color-text-secondary)] hover:text-[#F2F1F1] transition-colors bg-transparent border-none cursor-pointer">
                     <X size={20} />
@@ -309,7 +309,7 @@ export default function ChatWindow({ defaultOpen = false }) {
                                   setCurrentConversationId(c.id);
                                   setShowHistory(false);
                                 }}
-                                className={`flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${c.id === currentConversationId ? 'bg-[var(--color-accent-indigo)]/10 text-[var(--color-accent-indigo)] font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[#F2F1F1]'}`}
+                                className={`flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${c.id === currentConversationId ? 'bg-[var(--color-accent-orange)]/10 text-[var(--color-accent-orange)] font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[#F2F1F1]'}`}
                               >
                                 <span className="truncate">{c.title || 'Conversation'}</span>
                               </button>
@@ -323,7 +323,7 @@ export default function ChatWindow({ defaultOpen = false }) {
                   <button
                     onClick={createNewChat}
                     title="New Conversation"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-accent-indigo)]/10 border border-[var(--color-accent-indigo)]/20 text-[var(--color-accent-indigo)] rounded-lg text-xs font-medium hover:bg-[var(--color-accent-indigo)]/20 transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-accent-orange)]/10 border border-[var(--color-accent-orange)]/20 text-[var(--color-accent-orange)] rounded-lg text-xs font-medium hover:bg-[var(--color-accent-orange)]/20 transition-colors cursor-pointer"
                   >
                     <Plus size={14} />
                     <span>New Conversation</span>
@@ -341,7 +341,7 @@ export default function ChatWindow({ defaultOpen = false }) {
                   <select
                     value={provider}
                     onChange={(e) => setProvider(e.target.value)}
-                    className="ml-auto bg-[var(--color-bg-elevated)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-lg px-3 py-1.5 text-[11px] font-medium outline-none cursor-pointer focus:border-[var(--color-accent-indigo)]/50 transition-colors w-32 [&>option]:bg-[var(--color-bg-surface)] [&>option]:text-[#F2F1F1]"
+                    className="ml-auto bg-[var(--color-bg-elevated)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-lg px-3 py-1.5 text-[11px] font-medium outline-none cursor-pointer focus:border-[var(--color-accent-orange)]/50 transition-colors w-32 [&>option]:bg-[var(--color-bg-surface)] [&>option]:text-[#F2F1F1]"
                   >
                     <option value="huggingface">Hugging Face</option>
                     <option value="ollama">Ollama (Llama-3.1)</option>
@@ -357,7 +357,7 @@ export default function ChatWindow({ defaultOpen = false }) {
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center px-4">
                     <div className="w-16 h-16 bg-[var(--color-bg-surface)] border border-[var(--color-border)] rounded-2xl flex items-center justify-center mb-6 shadow-sm">
-                      <span className="text-2xl text-[var(--color-accent-indigo)]">⚡</span>
+                      <span className="text-2xl text-[var(--color-accent-orange)]">⚡</span>
                     </div>
                     <h4 className="text-[var(--color-text-primary)] font-semibold mb-2">How can I help you today?</h4>
                     <p className="text-[13px] text-[var(--color-text-secondary)] max-w-sm leading-relaxed">
@@ -374,12 +374,12 @@ export default function ChatWindow({ defaultOpen = false }) {
                       ) : (
                         <div className="flex items-center justify-between w-full mb-1.5 px-1">
                           <div className="text-[10px] text-[var(--color-text-muted)] font-medium uppercase tracking-wider">
-                            Project NPN
+                            IntelliDoc
                           </div>
                           {window.speechSynthesis && (
                             <button
                               onClick={() => handleTTS(m.content, idx)}
-                              className="text-[var(--color-text-muted)] hover:text-[var(--color-accent-indigo)] transition-colors cursor-pointer flex items-center justify-center w-5 h-5 rounded hover:bg-[var(--color-bg-elevated)]"
+                              className="text-[var(--color-text-muted)] hover:text-[var(--color-accent-orange)] transition-colors cursor-pointer flex items-center justify-center w-5 h-5 rounded hover:bg-[var(--color-bg-elevated)]"
                               title={speakingMessageIndex === idx ? "Stop speaking" : "Read aloud"}
                             >
                               {speakingMessageIndex === idx ? <Square size={10} className="fill-current" /> : <Volume2 size={12} />}
@@ -388,7 +388,7 @@ export default function ChatWindow({ defaultOpen = false }) {
                         </div>
                       )}
 
-                      <div className={`p-4 text-[14px] leading-relaxed ${m.role === 'user' ? 'bg-[var(--color-bg-surface)] border border-[var(--color-accent-indigo)]/30 rounded-2xl rounded-tr-sm text-[var(--color-text-primary)]' : 'bg-transparent text-[var(--color-text-primary)] w-full'}`}>
+                      <div className={`p-4 text-[14px] leading-relaxed ${m.role === 'user' ? 'bg-[var(--color-bg-surface)] border border-[var(--color-accent-orange)]/30 rounded-2xl rounded-tr-sm text-[var(--color-text-primary)]' : 'bg-transparent text-[var(--color-text-primary)] w-full'}`}>
                         {m.role === 'user' ? (
                           m.content
                         ) : (
@@ -406,7 +406,7 @@ export default function ChatWindow({ defaultOpen = false }) {
                 {isGenerating && (
                   <div className="mr-auto items-start">
                     <div className="text-[10px] text-[var(--color-text-muted)] mb-1.5 font-medium uppercase tracking-wider px-1">
-                      Project NPN
+                      IntelliDoc
                     </div>
                     <TypingIndicator />
                   </div>
@@ -502,14 +502,14 @@ export default function ChatWindow({ defaultOpen = false }) {
                     <button
                       type="submit"
                       disabled={!inputValue.trim()}
-                      className="p-2.5 mb-0.5 bg-[var(--color-accent-indigo)] hover:bg-[var(--color-accent-indigo-hover)] text-[#F2F1F1] rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      className="p-2.5 mb-0.5 bg-[var(--color-accent-orange)] hover:bg-[var(--color-accent-orange-hover)] text-[#F2F1F1] rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       <Send size={16} />
                     </button>
                   </div>
                 </form>
                 <div className="text-center mt-3 text-[10px] text-[var(--color-text-muted)] font-medium">
-                  Project NPN • Grounded Multimodal AI
+                  IntelliDoc • Grounded Multimodal AI
                 </div>
               </div>
 

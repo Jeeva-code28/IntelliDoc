@@ -1,5 +1,6 @@
 import time
 import uuid
+import re
 from typing import List, Dict, Tuple, Optional, Any
 from pathlib import Path
 
@@ -86,7 +87,7 @@ class RAGService:
 
             # Multimodal parsing router
             if ext == ".pdf":
-                raw_chunks = parse_pdf_document(file_path, doc_id)
+                raw_chunks = parse_pdf_document(file_path, doc_id, original_filename=original_filename)
             elif ext in [".csv", ".tsv"]:
                 raw_chunks = multimedia.process_tabular_attachment(file_path, doc_id, original_filename)
             elif ext == ".zip":
@@ -160,6 +161,9 @@ class RAGService:
             self.vector_store.upsert(chunks, vectors)
             self.bm25_index.add_chunks(chunks)
 
+            final_page_count = max(c.page_number for c in chunks) if chunks else 1
+            with self.repo.get_connection() as conn:
+                conn.execute("UPDATE documents SET page_count = ? WHERE id = ?", (final_page_count, doc_id))
             self.repo.update_document_status(doc_id, "ready", progress=1.0)
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
@@ -208,8 +212,67 @@ class RAGService:
         # Rewrite query
         rewritten_query = self.llm_client.rewrite_query(req.query, recent_msgs, req.llm_provider)
 
+        # Collect requested document scope
+        raw_doc_ids: List[str] = []
+        if req.document_ids:
+            raw_doc_ids.extend([did for did in req.document_ids if did])
+        if req.document_id and req.document_id not in raw_doc_ids:
+            raw_doc_ids.append(req.document_id)
+
         conv_docs = self.repo.get_all_documents(conv_id)
-        has_docs = len(conv_docs) > 0
+        permitted_doc_ids: List[str] = []
+
+        if raw_doc_ids:
+            for did in raw_doc_ids:
+                doc = self.repo.get_document(did)
+                if not doc:
+                    answer = f"The selected document '{did}' was not found or has been deleted."
+                    return QueryResponse(
+                        answer=answer, citations=[], verification=None,
+                        latency_ms=(time.perf_counter() - start_total) * 1000.0,
+                        retrieval_latency_ms=0.0,
+                        conversation_id=conv_id, intent="invalid_scope"
+                    )
+                if doc.status == "processing":
+                    answer = f"The selected document '{doc.filename}' is still processing. Please wait until indexing completes."
+                    return QueryResponse(
+                        answer=answer, citations=[], verification=None,
+                        latency_ms=(time.perf_counter() - start_total) * 1000.0,
+                        retrieval_latency_ms=0.0,
+                        conversation_id=conv_id, intent="document_processing"
+                    )
+                if doc.status == "failed":
+                    answer = f"The selected document '{doc.filename}' failed indexing and cannot be queried."
+                    return QueryResponse(
+                        answer=answer, citations=[], verification=None,
+                        latency_ms=(time.perf_counter() - start_total) * 1000.0,
+                        retrieval_latency_ms=0.0,
+                        conversation_id=conv_id, intent="document_failed"
+                    )
+                if doc.status == "ready":
+                    if doc.conversation_id and doc.conversation_id != conv_id:
+                        answer = f"The selected document '{doc.filename}' does not belong to this conversation."
+                        return QueryResponse(
+                            answer=answer, citations=[], verification=None,
+                            latency_ms=(time.perf_counter() - start_total) * 1000.0,
+                            retrieval_latency_ms=0.0,
+                            conversation_id=conv_id, intent="invalid_scope"
+                        )
+                    permitted_doc_ids.append(doc.id)
+        else:
+            ready_conv_docs = [d for d in conv_docs if d.status == "ready"]
+            processing_docs = [d for d in conv_docs if d.status == "processing"]
+            if not ready_conv_docs and processing_docs:
+                answer = "Documents in this conversation are still processing. Please wait until indexing completes."
+                return QueryResponse(
+                    answer=answer, citations=[], verification=None,
+                    latency_ms=(time.perf_counter() - start_total) * 1000.0,
+                    retrieval_latency_ms=0.0,
+                    conversation_id=conv_id, intent="document_processing"
+                )
+            permitted_doc_ids = [d.id for d in ready_conv_docs]
+
+        has_docs = len(permitted_doc_ids) > 0
 
         # STAGE 0: Intent Routing
         from app.intent import route, Intent
@@ -262,15 +325,37 @@ class RAGService:
                 conversation_id=conv_id, intent=intent.value
             )
 
+        # If no eligible/ready documents in scope for a knowledge query, return explicit response
+        if not permitted_doc_ids:
+            answer = "No eligible or ready documents are selected to answer your question."
+            total_latency_ms = (time.perf_counter() - start_total) * 1000.0
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "user", req.query, [])
+            self.repo.add_message(str(uuid.uuid4()), conv_id, "assistant", answer, [])
+            return QueryResponse(
+                answer=answer, citations=[], verification=None,
+                latency_ms=total_latency_ms, retrieval_latency_ms=0.0,
+                conversation_id=conv_id, intent=intent.value if intent else "no_documents"
+            )
+
         # STAGE 1: Fast Asymmetric Embed Query (<15ms)
         start_retrieval = time.perf_counter()
         query_vec = self.embedding_engine.embed_query(rewritten_query)
 
-        # STAGE 2: Exact NumPy Vector Search scoped to conversation (<25ms P99)
-        dense_results = self.vector_store.search(query_vec, k=settings.TOP_K_DENSE, conversation_id=conv_id)
+        # STAGE 2: Exact NumPy Vector Search scoped strictly to permitted_doc_ids and conversation (<25ms P99)
+        dense_results = self.vector_store.search(
+            query_vec,
+            k=settings.TOP_K_DENSE,
+            conversation_id=conv_id,
+            document_ids=permitted_doc_ids
+        )
 
-        # STAGE 3: Custom BM25 Sparse Search scoped to conversation (<5ms)
-        sparse_results = self.bm25_index.search(rewritten_query, top_k=settings.TOP_K_SPARSE, conversation_id=conv_id)
+        # STAGE 3: Custom BM25 Sparse Search scoped strictly to permitted_doc_ids and conversation (<5ms)
+        sparse_results = self.bm25_index.search(
+            rewritten_query,
+            top_k=settings.TOP_K_SPARSE,
+            conversation_id=conv_id,
+            document_ids=permitted_doc_ids
+        )
 
         # STAGE 4: RRF Fusion (k=60)
         fusion_results = rrf_fusion(dense_results, sparse_results, k=settings.RRF_K)
@@ -279,10 +364,10 @@ class RAGService:
         boosted_results = apply_intent_boost(rewritten_query, fusion_results, self.chunks_cache)
         
         # STAGE 5B: Rerank
-        # Map boosted IDs back to Chunk objects for the cross-encoder
+        # Map boosted IDs back to Chunk objects for the cross-encoder, strictly scoped
         candidate_chunks_to_rerank = [
             self.chunks_cache[cid] for cid, _ in boosted_results[:settings.FINAL_TOP_K * 2]
-            if cid in self.chunks_cache
+            if cid in self.chunks_cache and self.chunks_cache[cid].document_id in permitted_doc_ids
         ]
         
         reranked_results = rerank(rewritten_query, candidate_chunks_to_rerank, top_k=settings.FINAL_TOP_K)
@@ -294,16 +379,23 @@ class RAGService:
         # STAGE 6: Relevance Gate
         top_rerank_score = reranked_results[0][1] if reranked_results else 0.0
         
-        conv_docs = self.repo.get_all_documents(conv_id)
         retrieved_candidate_chunks = [
             chunk for chunk, _ in top_candidates 
-            if getattr(chunk, "conversation_id", None) == conv_id
+            if chunk.document_id in permitted_doc_ids and getattr(chunk, "conversation_id", None) == conv_id
         ]
 
         candidate_chunks = retrieved_candidate_chunks
 
-        CONFIDENCE_FLOOR = 0.35
-        refusal_triggered = top_rerank_score < CONFIDENCE_FLOOR
+        from app.reranker import is_reranker_available
+        if not candidate_chunks:
+            refusal_triggered = True
+        elif is_reranker_available():
+            CONFIDENCE_FLOOR = 0.05  # bge-reranker-base outputs normalized probabilities in [0.0, 1.0]
+            refusal_triggered = top_rerank_score < CONFIDENCE_FLOOR
+        else:
+            top_dense_score = dense_results[0][1] if dense_results else 0.0
+            top_coverage = max([calculate_term_coverage(rewritten_query, c.text) for c in candidate_chunks]) if candidate_chunks else 0.0
+            refusal_triggered = (top_dense_score < settings.RELEVANCE_DENSE_THRESHOLD) or (top_coverage < settings.RELEVANCE_TERM_COVERAGE_THRESHOLD)
 
         if refusal_triggered or not candidate_chunks:
             refusal_text = "I cannot answer this based on the provided document."
@@ -338,11 +430,11 @@ class RAGService:
                 intent=intent.value
             )
 
-        # STAGE 7: Grounded LLM Context Construction
+        # STAGE 7: Grounded LLM Context Construction (strictly scoped to permitted_doc_ids)
         context_parts = []
         
         for doc in conv_docs:
-            if doc.metadata and "document_type" in doc.metadata:
+            if doc.id in permitted_doc_ids and doc.metadata and "document_type" in doc.metadata:
                 m = doc.metadata
                 context_parts.append(
                     f"--- DOCUMENT SUMMARY ({doc.filename}) ---\n"
@@ -357,19 +449,32 @@ class RAGService:
         citation_ids = []
 
         for idx, chunk in enumerate(candidate_chunks, start=1):
+            assert chunk.document_id in permitted_doc_ids, f"Isolation leak: chunk {chunk.id} from document {chunk.document_id} not in {permitted_doc_ids}"
             source_tag = f"[S{idx}]"
-            context_parts.append(f"SOURCE {source_tag} ({chunk.filename}, type: {chunk.content_type}, p.{chunk.page_number}, {chunk.section}):\n{chunk.context_text}")
+            clean_filename = re.sub(r"^[0-9a-fA-F-]{36}_", "", chunk.filename)
+            context_parts.append(f"SOURCE {source_tag} ({clean_filename}, type: {chunk.content_type}, p.{chunk.page_number}, Section: {chunk.section}):\n{chunk.context_text}")
             citation_ids.append(chunk.id)
 
             # Rerank score lookup
-            score = next((sc for cid, sc in reranked_results if cid == chunk.id), 0.0)
+            score = next((sc for c_obj, sc in reranked_results if getattr(c_obj, "id", None) == chunk.id), 0.0)
+            
+            # Clean excerpt without metadata prefixes or legacy fabricated figure captions
+            clean_excerpt = re.sub(r'^(?:Document:[^\n]+\n+|Page\s*\d+\s*\|\s*Section:[^\n]+\n+)+', '', chunk.context_text, flags=re.IGNORECASE).strip()
+            clean_excerpt = re.sub(r'Description:\s*Financial Performance Chart & Metrics diagram[^\n]*', 'Description: Embedded image figure from slide presentation (visual content uninterpreted).', clean_excerpt)
+            if not clean_excerpt:
+                clean_excerpt = chunk.context_text
+
             citations.append(CitationSource(
                 chunk_id=chunk.id,
+                document_id=chunk.document_id,
+                document_name=clean_filename,
                 filename=chunk.filename,
                 page_number=chunk.page_number,
                 section=chunk.section,
+                section_heading=chunk.section,
                 content_type=chunk.content_type,
-                snippet=chunk.context_text[:500] if len(chunk.context_text) > 500 else chunk.context_text,
+                snippet=clean_excerpt[:500] if len(clean_excerpt) > 500 else clean_excerpt,
+                excerpt=clean_excerpt[:500] if len(clean_excerpt) > 500 else clean_excerpt,
                 score=float(score),
                 bbox=chunk.bbox,
                 asset_path=chunk.asset_path,
@@ -411,10 +516,13 @@ class RAGService:
         self.repo.add_message(str(uuid.uuid4()), conv_id, "user", req.query, [])
         self.repo.add_message(str(uuid.uuid4()), conv_id, "assistant", answer, citation_ids)
 
+        is_refusal = "cannot answer" in answer.lower()
         return QueryResponse(
+            status="refused" if is_refusal else "answered",
             answer=answer,
             citations=citations,
             verification=verification_badge,
+            evidence_sufficient=not is_refusal,
             latency_ms=total_latency_ms,
             retrieval_latency_ms=retrieval_latency_ms,
             conversation_id=conv_id,
@@ -481,7 +589,9 @@ class RAGService:
             self.chunks_cache.pop(k, None)
 
         # 2. Clean up BM25 index
-        if chunk_ids_to_remove:
+        if hasattr(self.bm25_index, "delete_document"):
+            self.bm25_index.delete_document(doc_id)
+        elif chunk_ids_to_remove:
             self.bm25_index.delete_chunks(chunk_ids_to_remove)
 
         # 3. Clean up Vector store (some stores like qdrant and numpy support delete by document_id)

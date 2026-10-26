@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import numpy as np
 from app.schemas import Chunk
 
@@ -17,7 +17,14 @@ class VectorStore(ABC):
         pass
 
     @abstractmethod
-    def search(self, query_vec: np.ndarray, k: int) -> List[Tuple[str, float]]:
+    def search(
+        self,
+        query_vec: np.ndarray,
+        k: int,
+        conversation_id: Optional[str] = None,
+        document_ids: Optional[List[str]] = None,
+        **kwargs
+    ) -> List[Tuple[str, float]]:
         """Search top-k most similar chunks given an L2 normalized query vector."""
         pass
 

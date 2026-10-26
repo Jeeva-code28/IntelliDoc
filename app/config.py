@@ -84,12 +84,12 @@ class Settings:
     HUGGINGFACE_BASE_URL: str = os.getenv("HUGGINGFACE_BASE_URL", "https://router.huggingface.co/v1")
 
     # Configurable Model Settings
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "hf.co/helloollel/Llama-3.1-8B-instruct-bilibili-gguf:Q4_K_M")
-    OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "120.0"))
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731:novita")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL") or "qwen2.5:0.5b"
+    OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT") or "120.0")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL") or "gemini-flash-latest"
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL") or "llama-3.3-70b-versatile"
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
+    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL") or "deepseek-ai/DeepSeek-V4-Flash-0731:novita"
 
     # Parsing Settings
     FONT_PROFILING_PAGES: int = 15

@@ -119,7 +119,7 @@ _DOCUMENT_DEICTIC = [
 _DEFINITIONAL = [
     r"^what\s+(is|are|does|do)\s+(a|an|the)?\s*[\w\s\-]{1,40}\s*(mean|stand\s+for)\??$",
     r"^(define|explain|describe)\s+(the\s+(term|concept|meaning)\s+of\s+)?[\w\s\-]{1,40}\??$",
-    r"^what\s+(is|are)\s+(a|an|the)?\s*[\w\s\-]{1,40}\??$",
+    r"^what\s+(is|are)\s+(a|an)\s+[a-zA-Z\s]{1,30}\??$",
 ]
 
 

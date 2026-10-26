@@ -17,17 +17,22 @@ class SemanticCache:
 
     def __init__(self, similarity_threshold: float = 0.95):
         self.similarity_threshold = similarity_threshold
-        self._cache: Dict[str, Tuple[np.ndarray, str, Dict[str, Any]]] = {}  # query_id -> (vec, answer, metadata)
+        self._cache: Dict[str, Tuple[np.ndarray, str, Dict[str, Any], Optional[str]]] = {}  # query_id -> (vec, answer, metadata, scope_key)
 
-    def get(self, query_text: str) -> Optional[Dict[str, Any]]:
+    def get(self, query_text: str, scope_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if not self._cache:
+            return None
+
+        # Filter cache entries by scope_key
+        scoped_items = [(qid, val) for qid, val in self._cache.items() if val[3] == scope_key]
+        if not scoped_items:
             return None
 
         embedder = get_embedding_engine()
         q_vec = embedder.embed_query(query_text).astype(np.float32)
 
-        cached_ids = list(self._cache.keys())
-        matrix = np.vstack([val[0] for val in self._cache.values()])
+        cached_ids = [item[0] for item in scoped_items]
+        matrix = np.vstack([item[1][0] for item in scoped_items])
         scores = np.dot(matrix, q_vec)
 
         best_idx = int(np.argmax(scores))
@@ -45,11 +50,17 @@ class SemanticCache:
             }
         return None
 
-    def set(self, query_text: str, answer_text: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def set(
+        self,
+        query_text: str,
+        answer_text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        scope_key: Optional[str] = None
+    ) -> None:
         embedder = get_embedding_engine()
         q_vec = embedder.embed_query(query_text).astype(np.float32)
-        q_id = str(hash(query_text))
-        self._cache[q_id] = (q_vec, answer_text, metadata or {})
+        q_id = f"{scope_key or 'global'}_{hash(query_text)}"
+        self._cache[q_id] = (q_vec, answer_text, metadata or {}, scope_key)
 
     def evaluate_token_bucket_routing(self, context_text: str) -> str:
         """Token bucket cost controller. Forces cheaper/local model if context > 8,000 tokens."""
